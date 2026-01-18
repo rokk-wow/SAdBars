@@ -45,7 +45,7 @@ function addon:Initialize()
     self.author = "Rôkk-Wyrmrest Accord"
 
     self:RegisterEvent("PLAYER_ENTERING_WORLD", function(event)
-        self:CombatSafe(self, function()
+        self:CombatSafe(function()
             self:UpdateActionBars()
         end)
     end)
