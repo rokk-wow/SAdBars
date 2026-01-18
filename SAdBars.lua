@@ -37,6 +37,7 @@ addon.CombatSafe.UpdateActionBars = function(self)
     self:UpdateAssistedHighlightVisibility()
     self:CustomizeAssistedHighlightGlow()
     self:ZoomButtonIcons()
+    self:CustomizeCooldownFont()
     self:GCDSwipe()
     self:SwipePOC()
 end
@@ -425,6 +426,46 @@ function addon:ZoomButtonIcons()
     self:IterateActionButtons(zoomButtonIcon)
 end
 
+function addon:CustomizeCooldownFont()
+    local function adjustCooldownFont(button, buttonName)
+        if button and button.cooldown then
+            if not button.cooldown.SAdBars_CooldownBG then
+                local bg = button.cooldown:CreateTexture(nil, "OVERLAY", nil, 1)
+                bg:SetColorTexture(0, 0, 0, 0.75)
+                bg:SetSize(42, 42)
+                bg:SetPoint("CENTER", button.cooldown, "CENTER", 0, 0)
+                bg:Show()
+                button.cooldown.SAdBars_CooldownBG = bg
+            end
+            
+            for _, region in pairs({button.cooldown:GetRegions()}) do
+                if region:GetObjectType() == "FontString" then
+                    local font, _, flags = region:GetFont()
+                    if font then
+                        region:SetFont(font, 24, flags)
+                    end
+                end
+            end
+            
+            if not button.cooldown.__SAdBars_FontHooked then
+                button.cooldown.__SAdBars_FontHooked = true
+                hooksecurefunc(button.cooldown, "SetCooldown", function(self)
+                    for _, region in pairs({self:GetRegions()}) do
+                        if region:GetObjectType() == "FontString" then
+                            local font, _, flags = region:GetFont()
+                            if font then
+                                region:SetFont(font, 24, flags)
+                            end
+                        end
+                    end
+                end)
+            end
+        end
+    end
+    
+    self:IterateActionButtons(adjustCooldownFont)
+end
+
 function addon:GCDSwipe()
     local function hideCooldownSwipe(button, buttonName)
         if button and button.cooldown then
@@ -444,51 +485,3 @@ function addon:GCDSwipe()
     self:IterateActionButtons(hideCooldownSwipe)
 end
 
-function addon:SwipePOC()
-    local gcdButtons = {
-        ActionButton3 = true,
-        ActionButton4 = true,
-        ActionButton6 = true,
-        ActionButton7 = true,
-        ActionButton8 = true,
-        MultiBarBottomLeftButton1 = true,
-        MultiBarBottomLeftButton2 = true,
-        MultiBarBottomLeftButton5 = true,
-        MultiBarBottomLeftButton6 = true,
-        MultiBarBottomLeftButton7 = true,
-        MultiBarBottomLeftButton9 = true,
-        MultiBarBottomLeftButton10 = true,
-        MultiBarBottomLeftButton11 = true,
-        MultiBarBottomLeftButton12 = true,
-    }
-    
-    local function addGCDOverlay(button, buttonName)
-        if button and not button.SAdBars_GCDCooldown and gcdButtons[buttonName] then
-            local gcdCooldown = CreateFrame("Cooldown", buttonName .. "_SAdBars_GCD", button, "CooldownFrameTemplate")
-            gcdCooldown:SetAllPoints(button)
-            gcdCooldown:SetDrawEdge(false)
-            gcdCooldown:SetDrawBling(false)
-            gcdCooldown:SetSwipeColor(0, 0, 0, 0.9)
-            gcdCooldown:SetHideCountdownNumbers(true)
-            gcdCooldown:SetFrameLevel(button:GetFrameLevel() + 5)
-            
-            button.SAdBars_GCDCooldown = gcdCooldown
-        end
-    end
-    
-    self:IterateActionButtons(addGCDOverlay)
-    
-    self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", function(event, unit, castGUID, spellID)
-        if unit == "player" then
-            local cooldownInfo = C_Spell.GetSpellCooldown(61304)
-            
-            if cooldownInfo and cooldownInfo.startTime > 0 and cooldownInfo.duration > 0 and cooldownInfo.duration <= 1.5 then
-                self:IterateActionButtons(function(button, buttonName)
-                    if button and button.SAdBars_GCDCooldown and gcdButtons[buttonName] then
-                        button.SAdBars_GCDCooldown:SetCooldown(cooldownInfo.startTime, cooldownInfo.duration)
-                    end
-                end)
-            end
-        end
-    end)
-end
