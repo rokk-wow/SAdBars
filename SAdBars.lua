@@ -23,8 +23,6 @@ addon.vars = addon.vars or {
     buttonPadding = 2
 }
 
-addon.CombatSafe = addon.CombatSafe or {}
-
 addon.CombatSafe.UpdateActionBars = function(self)
     self:CustomizeProcGlow()
     self:HideSpellActivationOverlay()
@@ -42,26 +40,12 @@ addon.CombatSafe.UpdateActionBars = function(self)
     self:CooldownSwipe()
 end
 
-function addon:LoadConfig()
+function addon:Initialization()
     self.config.version = "1.0"
     self.author = "Rôkk-Wyrmrest Accord"
 
-        self.config.settings.barOptions = {
-        title = "barOptions",
-        controls = {
-            {
-                type = "checkbox",
-                name = "exampleCheckbox",
-                default = true,
-                onValueChange = self.exampleCheckbox
-            }
-        }
-    }
-end
-
-function addon:RegisterFunctions()
     self:RegisterEvent("PLAYER_ENTERING_WORLD", function(event)
-        self.CombatSafe:UpdateActionBars()
+        self.CombatSafe.UpdateActionBars(self)
     end)
 end
 
@@ -95,7 +79,7 @@ function addon:addBorder(bar, borderWidth, borderColor)
     
     local size = borderWidth or addon.vars.borderWidth
     local colorHex = borderColor or addon.vars.borderColor
-    local r, g, b, a = self:hexToRGB(colorHex)
+    local r, g, b, a = self:HexToRGB(colorHex)
     
     local borders = bar.SAdBars_Borders
     

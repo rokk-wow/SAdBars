@@ -68,7 +68,7 @@ SAddons are:
    addon.savedVarsPerCharName = "MyAddon_Settings_Char"
    addon.compartmentFuncName = "MyAddon_Compartment_Func"
    
-   function addon:LoadConfig()
+   function addon:Initialization()
        self.config.version = "1.0"
        self.author = "Your Name"
        
@@ -108,16 +108,15 @@ SAddons are:
    end
    
    function addon:exampleCheckbox(isChecked)
-       self:debug(addonName .. ": " .. tostring(isChecked))
+       self:Debug(addonName .. ": " .. tostring(isChecked))
    end
    
    function addon:examplePanelCheckbox(isChecked)
-       self:info("Checkbox changed to: " .. tostring(isChecked))
+       self:Info("Checkbox changed to: " .. tostring(isChecked))
    end
    
    -- Localization
-   addon.locale = {}
-   
+   -- The locale table is automatically initialized by SAdCore
    addon.locale.enEN = {
        -- Main settings localization strings
        exampleTitle = "My Addon Settings",
@@ -138,7 +137,7 @@ SAddons are:
 This example shows all available control types using the same naming convention and structure as `Addon_Example.lua`:
 
 ```lua
-function addon:LoadConfig()
+function addon:Initialization()
     self.config.version = "1.0"
     self.author = "Your Name"
     
@@ -240,37 +239,36 @@ end
 
 -- Callback Functions
 function addon:mainCheckbox(isChecked)
-    self:debug("Main checkbox: " .. tostring(isChecked))
+    self:Debug("Main checkbox: " .. tostring(isChecked))
 end
 
 function addon:mainDropdown(selectedValue)
-    self:info("Dropdown selected: " .. selectedValue)
+    self:Info("Dropdown selected: " .. selectedValue)
 end
 
 function addon:mainSlider(value)
-    self:info("Slider value: " .. value)
+    self:Info("Slider value: " .. value)
 end
 
 function addon:mainColor(hexColor)
-    self:info("Color changed: " .. hexColor)
+    self:Info("Color changed: " .. hexColor)
 end
 
 function addon:mainInputButton(inputText, editBox)
-    self:info("Input value: " .. inputText)
+    self:Info("Input value: " .. inputText)
     editBox:SetText("")
 end
 
 function addon:mainButton()
-    self:info("Button clicked!")
+    self:Info("Button clicked!")
 end
 
 function addon:advancedCheckbox(isChecked)
-    self:info("Advanced checkbox: " .. tostring(isChecked))
+    self:Info("Advanced checkbox: " .. tostring(isChecked))
 end
 
 -- Localization
-addon.locale = {}
-
+-- The locale table is automatically initialized by SAdCore
 addon.locale.enEN = {
     -- Main panel
     mainHeader = "Main Settings",
@@ -328,9 +326,9 @@ Control values are automatically persisted and can be accessed through `self.set
 ```lua
 function addon:PrintDebuggingStatus()
     if self.settings.main.enableDebugging then
-        self:info("Debugging is currently ENABLED")
+        self:Info("Debugging is currently ENABLED")
     else
-        self:info("Debugging is currently DISABLED")
+        self:Info("Debugging is currently DISABLED")
     end
 end
 ```
@@ -371,22 +369,27 @@ By default, every addon automatically gets a slash command based on the addon na
 You can register additional commands as **parameters** to the main slash command using `self:RegisterSlashCommand(command, callback)`. These custom commands are accessed by typing the main slash command followed by the command name.
 
 **Example:**
-
-**Example:**
 ```lua
-function addon:RegisterFunctions()
+function addon:Initialization()
+    self.config.version = "1.0"
+    self.author = "Your Name"
+    
+    -- Configure your settings panels here
+    -- ...
+    
+    -- Register slash commands
     self:RegisterSlashCommand("hello", self.HelloCommand)
     self:RegisterSlashCommand("debug", self.DebugCommand)
 end
 
 function addon:HelloCommand()
-    self:info("Hello, World!")
+    self:Info("Hello, World!")
 end
 
 function addon:DebugCommand(enabled)
     if enabled == "on" then
         self.settings.main.enableDebugging = true
-        self:info("Debugging enabled")
+        self:Info("Debugging enabled")
     end
 end
 ```
@@ -403,24 +406,31 @@ end
 Register WoW events with `self:RegisterEvent(eventName, callback)`:
 
 ```lua
-function addon:RegisterFunctions()
+function addon:Initialization()
+    self.config.version = "1.0"
+    self.author = "Your Name"
+    
+    -- Configure your settings panels here
+    -- ...
+    
+    -- Register events
     self:RegisterEvent("PLAYER_ENTERING_WORLD", self.OnPlayerEnteringWorld)
     self:RegisterEvent("PLAYER_REGEN_DISABLED", self.OnEnterCombat)
     self:RegisterEvent("UNIT_HEALTH", self.OnUnitHealth)
 end
 
 function addon:OnPlayerEnteringWorld(event)
-    self:info("Player entered world")
+    self:Info("Player entered world")
 end
 
 function addon:OnEnterCombat(event)
-    self:info("Entering combat")
+    self:Info("Entering combat")
 end
 
 function addon:OnUnitHealth(event, unitID)
     if unitID == "player" then
         local health = UnitHealth("player")
-        self:debug("Health: " .. health)
+        self:Debug("Health: " .. health)
     end
 end
 ```
@@ -431,14 +441,14 @@ Some WoW API calls cannot be made during combat (e.g., modifying secure frames, 
 
 ### Using the CombatSafe Table
 
-Define functions in `addon.CombatSafe` to make them combat-safe. You must initialize the `CombatSafe` table before adding functions to it. SAdCore automatically wraps these functions to queue them during combat and execute them when combat ends.
+Define functions in `addon.CombatSafe` to make them combat-safe. The `CombatSafe` table is automatically initialized by SAdCore when you call `GetAddon()`. SAdCore automatically wraps these functions to queue them during combat and execute them when combat ends.
+
+**Important:** CombatSafe functions must be defined with `self` as the first parameter and called with dot notation (`.`), explicitly passing `self` as the first argument.
 
 ### Example: Frame Updates
 
 ```lua
--- Initialize the CombatSafe table
-addon.CombatSafe = addon.CombatSafe or {}
-
+-- Define CombatSafe function with self as first parameter
 addon.CombatSafe.updateHealthBar = function(self, health, maxHealth)
     local percentage = (health / maxHealth) * 100
     MyHealthBar:SetValue(percentage)
@@ -446,12 +456,12 @@ addon.CombatSafe.updateHealthBar = function(self, health, maxHealth)
     return true
 end
 
--- This will work whether in combat or not
+-- Call using dot notation, passing self explicitly
 function addon:OnUnitHealth(event, unitID)
     if unitID == "player" then
         local health = UnitHealth("player")
         local maxHealth = UnitHealthMax("player")
-        self.CombatSafe:updateHealthBar(health, maxHealth)
+        self.CombatSafe.updateHealthBar(self, health, maxHealth)
     end
 end
 ```
@@ -487,10 +497,10 @@ end
 These are the most commonly used functions available on the `self` object within the addon methods:
 
 ### Logging
-- **`self:debug(text)`** - Only displays when "Enable Debugging" is enabled in settings
-- **`self:info(text)`** - Always displays (informational messages)
-- **`self:error(text)`** - Always displays (error messages)
-- **`self:dump(value, name)`** - Dumps a variable using DevTools_Dump for inspection (optional name parameter)
+- **`self:Debug(text)`** - Only displays when "Enable Debugging" is enabled in settings
+- **`self:Info(text)`** - Always displays (informational messages)
+- **`self:Error(text)`** - Always displays (error messages)
+- **`self:Dump(value, name)`** - Dumps a variable using DevTools_Dump for inspection (optional name parameter)
 
 ### Localization
 - **`self:L(key)`** - Returns the localized string for the given key based on client language
@@ -505,6 +515,21 @@ These are the most commonly used functions available on the `self` object within
 
 ### Settings
 - **`self:OpenSettings()`** - Opens the addon settings panel
+
+### Color Utilities
+- **`self:hexToRGB(hex)`** - Converts hex color string to RGB values (returns r, g, b, a)
+- **`self:rgbToHex(r, g, b, a)`** - Converts RGB values to hex color string (returns hex string)
+
+**Example:**
+```lua
+-- Convert hex to RGB
+local r, g, b, a = self:hexToRGB("#FF5733FF")
+-- Returns: 1.0, 0.341, 0.2, 1.0
+
+-- Convert RGB to hex
+local hexColor = self:rgbToHex(1.0, 0.341, 0.2, 1.0)
+-- Returns: "#FF5733FF"
+```
 
 ### Utilities
 - **`self:ShowDialog(dialogOptions)`** - Display a custom dialog with optional controls
@@ -534,7 +559,7 @@ self:ShowDialog({
         }
     },
     onClose = function()
-        self:info("Dialog closed")
+        self:Info("Dialog closed")
     end
 })
 ```

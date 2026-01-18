@@ -6,7 +6,7 @@ addon.savedVarsGlobalName = "MyAddon_Settings_Global"
 addon.savedVarsPerCharName = "MyAddon_Settings_Char"
 addon.compartmentFuncName = "MyAddon_Compartment_Func"
 
-function addon:LoadConfig()
+function addon:Initialization()
     self.config.version = "1.0"
     self.author = "Rôkk-Wyrmrest Accord"
 
@@ -46,27 +46,22 @@ function addon:LoadConfig()
 end
 
 function addon:exampleCheckbox(isChecked)
-    self:debug(addonName .. ": " .. tostring(isChecked))
+    self:Debug(addonName .. ": " .. tostring(isChecked))
 end
 
 function addon:examplePanelCheckbox(isChecked)
-    self:info("Checkbox changed to: " .. tostring(isChecked))
+    self:Info("Checkbox changed to: " .. tostring(isChecked))
 end
 
 -- Combat-safe functions example
--- Initialize the CombatSafe table
-addon.CombatSafe = addon.CombatSafe or {}
-
 addon.CombatSafe.exampleCombatSafeFunction = function(self, message)
     -- This function can safely modify UI elements even if called during combat
     -- It will be queued automatically and executed when combat ends
-    self:info("Combat-safe function executed: " .. message)
+    self:Info("Combat-safe function executed: " .. message)
     return true
 end
 
 -- Localization
-addon.locale = {}
-
 addon.locale.enEN = {
     -- Main settings localization strings
     exampleTitle = "My Addon Settings",

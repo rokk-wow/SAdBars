@@ -217,7 +217,7 @@ end
 --[[============================================================================
     SAdCore - Simple Addon Core
 ==============================================================================]]
-local SADCORE_MAJOR, SADCORE_MINOR = "SAdCore-1", 5
+local SADCORE_MAJOR, SADCORE_MINOR = "SAdCore-1", 6
 local SAdCore, oldminor = LibStub:NewLibrary(SADCORE_MAJOR, SADCORE_MINOR)
 if not SAdCore then
     return
@@ -230,7 +230,7 @@ local addon = SAdCore.prototype
 local function callHook(addonInstance, hookName, ...)
     local hook = addonInstance[hookName]
     if hook then
-        return hook(...)
+        return hook(addonInstance, ...)
     end
     return ...
 end
@@ -245,7 +245,9 @@ function SAdCore:GetAddon(addonName)
     if not self.addons[addonName] then
         local newAddon = {
             addonName = addonName,
-            core = self
+            core = self,
+            CombatSafe = {},
+            locale = {}
         }
         setmetatable(newAddon, {
             __index = self.prototype
@@ -265,12 +267,12 @@ function SAdCore:GetAddon(addonName)
                                  (addonInstance.compartmentFuncName and not string.find(addonInstance.compartmentFuncName, addonInstance.addonName, 1, true))
 
                 if hasError then
-                    addon.coreInfo(getCoreLocaleString("core_errorConfigHelp1"))
-                    addon.coreInfo(getCoreLocaleString("core_errorConfigHelp2"))
-                    addon.coreInfo(getCoreLocaleString("core_errorConfigExample") .. " '" .. addonInstance.addonName .. "':")
-                    addon.coreInfo("  savedVarsGlobalName = '" .. addonInstance.addonName .. "_Settings_Global'")
-                    addon.coreInfo("  savedVarsPerCharName = '" .. addonInstance.addonName .. "_Settings_Char'")
-                    addon.coreInfo("  compartmentFuncName = '" .. addonInstance.addonName .. "_Compartment_Func'")
+                    addon._coreInfo(getCoreLocaleString("core_errorConfigHelp1"))
+                    addon._coreInfo(getCoreLocaleString("core_errorConfigHelp2"))
+                    addon._coreInfo(getCoreLocaleString("core_errorConfigExample") .. " '" .. addonInstance.addonName .. "':")
+                    addon._coreInfo("  savedVarsGlobalName = '" .. addonInstance.addonName .. "_Settings_Global'")
+                    addon._coreInfo("  savedVarsPerCharName = '" .. addonInstance.addonName .. "_Settings_Char'")
+                    addon._coreInfo("  compartmentFuncName = '" .. addonInstance.addonName .. "_Compartment_Func'")
                     error(string.format("%s: %s - %s", getCoreLocaleString("core_SAdCore"), addonInstance.addonName,
                         getCoreLocaleString("core_errorConfigHelp1")))
                     return
@@ -282,7 +284,7 @@ function SAdCore:GetAddon(addonName)
                 local savedVarsGlobal = _G[addonInstance.savedVarsGlobalName]
                 local savedVarsPerChar = _G[addonInstance.savedVarsPerCharName]
 
-                addonInstance:Initialize(savedVarsGlobal, savedVarsPerChar)
+                addonInstance:_Initialize(savedVarsGlobal, savedVarsPerChar)
 
                 _G[addonInstance.compartmentFuncName] = function()
                     addonInstance:OpenSettings()
@@ -297,7 +299,7 @@ end
 
 do -- Initialization
 
-    function addon:Initialize(savedVarsGlobal, savedVarsPerChar)
+    function addon:_Initialize(savedVarsGlobal, savedVarsPerChar)
         callHook(self, "BeforeInitialize", savedVarsGlobal, savedVarsPerChar)
 
         self.config = self.config or {}
@@ -307,7 +309,6 @@ do -- Initialization
         self.apiVersion = select(4, GetBuildInfo())
 
         local clientLocale = GetLocale()
-        self.locale = self.locale or {}
 
         for localeKey, prototypeLocale in pairs(SAdCore.prototype.locale) do
             if not self.locale[localeKey] then
@@ -376,7 +377,7 @@ do -- Initialization
         self.previousZone = nil
 
         local handleZoneChangeCallback = function(event, ...)
-            self:HandleZoneChange()
+            self:_HandleZoneChange()
         end
 
         self:RegisterEvent("PLAYER_ENTERING_WORLD", handleZoneChangeCallback)
@@ -388,26 +389,20 @@ do -- Initialization
         self:RegisterEvent("PLAYER_ROLES_ASSIGNED", handleZoneChangeCallback)
 
         self.author = self.author or "SAdCore Framework"
-        self:InitializeSavedVariables(savedVarsGlobal, savedVarsPerChar)
+        self:_InitializeSavedVariables(savedVarsGlobal, savedVarsPerChar)
 
-        self.CombatSafe = self.CombatSafe or {}
-
-        if self.LoadConfig then
-            self:LoadConfig()
+        if self.Initialization then
+            self:Initialization()
         end
 
         self.LibSerialize = LibStub("LibSerialize")
         self.LibCompress = LibStub("LibCompress")
 
-        self:CreateSlashCommand()
-        self:InitializeSettingsPanel()
+        self:_CreateSlashCommand()
+        self:_InitializeSettingsPanel()
 
-        if self.RegisterFunctions then
-            self:RegisterFunctions()
-        end
-
-        self:InitializeCombatQueue()
-        self:WrapCombatSafeFunctions()
+        self:_InitializeCombatQueue()
+        self:_WrapCombatSafeFunctions()
 
         local returnValue = true
         callHook(self, "AfterInitialize", returnValue)
@@ -417,7 +412,7 @@ do -- Initialization
         return returnValue
     end
 
-    function addon:InitializeSavedVariables(savedVarsGlobal, savedVarsPerChar)
+    function addon:_InitializeSavedVariables(savedVarsGlobal, savedVarsPerChar)
         savedVarsGlobal, savedVarsPerChar = callHook(self, "BeforeInitializeSavedVariables", savedVarsGlobal,
             savedVarsPerChar)
 
@@ -451,7 +446,7 @@ do -- Initialization
         return returnValue
     end
 
-    function addon:Setup(savedVarsGlobal, savedVarsPerChar, compartmentFuncName)
+    function addon:_Setup(savedVarsGlobal, savedVarsPerChar, compartmentFuncName)
         local addonInstance = self
         savedVarsGlobal, savedVarsPerChar, compartmentFuncName =
             callHook(self, "BeforeSetup", savedVarsGlobal, savedVarsPerChar, compartmentFuncName)
@@ -467,7 +462,7 @@ do -- Initialization
             self.setupEventFrame:RegisterEvent("ADDON_LOADED")
             self.setupEventFrame:SetScript("OnEvent", function(self, event, loadedAddon)
                 if loadedAddon == addonInstance.addonName then
-                    addonInstance:Initialize(addonInstance.setupConfig.savedVarsGlobal,
+                    addonInstance:_Initialize(addonInstance.setupConfig.savedVarsGlobal,
                         addonInstance.setupConfig.savedVarsPerChar)
 
                     if addonInstance.setupConfig.compartmentFuncName then
@@ -527,7 +522,7 @@ do -- Registration functions
         return returnValue
     end
 
-    function addon:CreateSlashCommand()
+    function addon:_CreateSlashCommand()
         local addonInstance = self
         callHook(self, "BeforeCreateSlashCommand")
 
@@ -585,7 +580,7 @@ do -- Zone Management
         return returnValue
     end
 
-    function addon:HandleZoneChange()
+    function addon:_HandleZoneChange()
         callHook(self, "BeforeHandleZoneChange")
 
         if not self.initialized then
@@ -605,7 +600,7 @@ do -- Zone Management
         self.previousZone = self.currentZone
         self.currentZone = currentZone
 
-        callHook(self, "OnZoneChange", self, currentZone)
+        callHook(self, "OnZoneChange", currentZone)
 
         local returnValue = true
         callHook(self, "AfterHandleZoneChange", returnValue, self.currentZone)
@@ -615,7 +610,7 @@ end
 
 do -- Settings Panels
 
-    function addon:ConfigureMainSettings()
+    function addon:_ConfigureMainSettings()
         callHook(self, "BeforeConfigureMainSettings")
 
         local headerControls = {}
@@ -634,9 +629,9 @@ do -- Settings Panels
             name = "core_useCharacterSettings",
             default = false,
             onValueChange = function(addonInstance, value)
-                addonInstance:debug("useCharacterSettings onValueChange called with value: " .. tostring(value) ..
+                addonInstance:Debug("useCharacterSettings onValueChange called with value: " .. tostring(value) ..
                                         " (type: " .. type(value) .. ")")
-                addonInstance:UpdateActiveSettings(value)
+                addonInstance:_UpdateActiveSettings(value)
             end,
             skipRefresh = true
         }, {
@@ -645,14 +640,14 @@ do -- Settings Panels
             buttonText = "core_loadSettingsButton",
             sessionOnly = true,
             onClick = function(addonInstance, inputText, editBox)
-                addonInstance:ImportSettings(inputText)
+                addonInstance:_ImportSettings(inputText)
                 editBox:SetText("")
             end
         }, {
             type = "button",
             name = "core_shareSettings",
             onClick = function()
-                self:ExportSettings()
+                self:_ExportSettings()
             end
         }, {
             type = "divider"
@@ -663,7 +658,7 @@ do -- Settings Panels
             type = "description",
             name = "author",
             onClick = function()
-                self:ShowDialog({
+                self:_ShowDialog({
                     title = "core_authorTitle",
                     controls = {{
                         type = "inputBox",
@@ -700,7 +695,7 @@ do -- Settings Panels
         return returnValue
     end
 
-    function addon:InitializeDefaultSettings()
+    function addon:_InitializeDefaultSettings()
         callHook(self, "BeforeInitializeDefaultSettings")
 
         if not self.config.settings then
@@ -728,18 +723,14 @@ do -- Settings Panels
         return returnValue
     end
 
-    function addon:InitializeSettingsPanel()
+    function addon:_InitializeSettingsPanel()
         callHook(self, "BeforeInitializeSettingsPanel")
 
-        if self.ConfigureMainSettings then
-            self:ConfigureMainSettings()
-        end
-
-        -- Pre-initialize all settings with their default values
-        self:InitializeDefaultSettings()
+        self:_ConfigureMainSettings()
+        self:_InitializeDefaultSettings()
 
         self.settingsPanels = {}
-        self.mainSettingsPanel = self:BuildMainSettingsPanel()
+        self.mainSettingsPanel = self:_BuildMainSettingsPanel()
         self.settingsCategory = Settings.RegisterCanvasLayoutCategory(self.mainSettingsPanel, self.addonName)
         Settings.RegisterAddOnCategory(self.settingsCategory)
         self.settingsPanels["main"] = self.mainSettingsPanel
@@ -754,7 +745,7 @@ do -- Settings Panels
 
         for _, panelKey in ipairs(sortedPanelKeys) do
             local panelConfig = self.config.settings[panelKey]
-            local childPanel = self:BuildChildSettingsPanel(panelKey)
+            local childPanel = self:_BuildChildSettingsPanel(panelKey)
             if childPanel then
                 local categoryName = self:L(panelConfig.title or panelKey)
                 Settings.RegisterCanvasLayoutSubcategory(self.settingsCategory, childPanel, categoryName)
@@ -767,7 +758,7 @@ do -- Settings Panels
         return returnValue
     end
 
-    function addon:BuildSettingsPanelHelper(panelKey, config)
+    function addon:_BuildSettingsPanelHelper(panelKey, config)
         panelKey, config = callHook(self, "BeforeBuildSettingsPanelHelper", panelKey, config)
 
         if not config then
@@ -775,7 +766,7 @@ do -- Settings Panels
             return false
         end
 
-        local panel = self:CreateSettingsPanel(panelKey)
+        local panel = self:_CreateSettingsPanel(panelKey)
         local titleText = panelKey == "main" and self.addonName or self:L(config.title)
         panel.Title:SetText(titleText)
         panel.controlRefreshers = {}
@@ -785,7 +776,7 @@ do -- Settings Panels
 
         if config.controls then
             for _, controlConfig in ipairs(config.controls) do
-                local control, newYOffset = self:AddControl(content, yOffset, panelKey, controlConfig)
+                local control, newYOffset = self:_AddControl(content, yOffset, panelKey, controlConfig)
                 if control and control.refresh then
                     table.insert(panel.controlRefreshers, control.refresh)
                 end
@@ -799,25 +790,25 @@ do -- Settings Panels
         return panel
     end
 
-    function addon:BuildMainSettingsPanel()
+    function addon:_BuildMainSettingsPanel()
         callHook(self, "BeforeBuildMainSettingsPanel")
 
-        local panel = self:BuildSettingsPanelHelper("main", self.config.settings.main)
+        local panel = self:_BuildSettingsPanelHelper("main", self.config.settings.main)
 
         callHook(self, "AfterBuildMainSettingsPanel", panel)
         return panel
     end
 
-    function addon:BuildChildSettingsPanel(panelKey)
+    function addon:_BuildChildSettingsPanel(panelKey)
         panelKey = callHook(self, "BeforeBuildChildSettingsPanel", panelKey)
 
-        local panel = self:BuildSettingsPanelHelper(panelKey, self.config.settings[panelKey])
+        local panel = self:_BuildSettingsPanelHelper(panelKey, self.config.settings[panelKey])
 
         callHook(self, "AfterBuildChildSettingsPanel", panel)
         return panel
     end
 
-    function addon:CreateSettingsPanel(panelKey)
+    function addon:_CreateSettingsPanel(panelKey)
         panelKey = callHook(self, "BeforeCreateSettingsPanel", panelKey)
 
         local panel = CreateFrame("Frame", self.addonName .. "_" .. panelKey .. "_Panel")
@@ -857,7 +848,7 @@ end
 
 do -- Controls
 
-    function addon:AddHeader(parent, yOffset, panelKey, name)
+    function addon:_AddHeader(parent, yOffset, panelKey, name)
         parent, yOffset, panelKey, name = callHook(self, "BeforeAddHeader", parent, yOffset, panelKey, name)
 
         local header = CreateFrame("Frame", nil, parent)
@@ -876,7 +867,7 @@ do -- Controls
         return header, newYOffset
     end
 
-    function addon:AddCheckbox(parent, yOffset, panelKey, name, defaultValue, onValueChange, skipRefresh, sessionOnly)
+    function addon:_AddCheckbox(parent, yOffset, panelKey, name, defaultValue, onValueChange, skipRefresh, sessionOnly)
         local addonInstance = self
         parent, yOffset, panelKey, name, defaultValue, onValueChange, skipRefresh, sessionOnly = callHook(self,
             "BeforeAddCheckbox", parent, yOffset, panelKey, name, defaultValue, onValueChange, skipRefresh, sessionOnly)
@@ -993,7 +984,7 @@ do -- Controls
         return checkbox, newYOffset
     end
 
-    function addon:AddDropdown(parent, yOffset, panelKey, name, defaultValue, options, onValueChange, skipRefresh,
+    function addon:_AddDropdown(parent, yOffset, panelKey, name, defaultValue, options, onValueChange, skipRefresh,
         sessionOnly)
         local addonInstance = self
         parent, yOffset, panelKey, name, defaultValue, options, onValueChange, skipRefresh, sessionOnly = callHook(self,
@@ -1072,7 +1063,7 @@ do -- Controls
         return dropdown, newYOffset
     end
 
-    function addon:AddSlider(parent, yOffset, panelKey, name, defaultValue, minValue, maxValue, step, onValueChange,
+    function addon:_AddSlider(parent, yOffset, panelKey, name, defaultValue, minValue, maxValue, step, onValueChange,
         skipRefresh, sessionOnly)
         local addonInstance = self
         parent, yOffset, panelKey, name, defaultValue, minValue, maxValue, step, onValueChange, skipRefresh, sessionOnly =
@@ -1168,7 +1159,7 @@ do -- Controls
         return slider, newYOffset
     end
 
-    function addon:AddButton(parent, yOffset, panelKey, name, onClick)
+    function addon:_AddButton(parent, yOffset, panelKey, name, onClick)
         local addonInstance = self
         parent, yOffset, panelKey, name, onClick = callHook(self, "BeforeAddButton", parent, yOffset, panelKey, name,
             onClick)
@@ -1208,7 +1199,7 @@ do -- Controls
         return button, newYOffset
     end
 
-    function addon:AddColorPicker(parent, yOffset, panelKey, name, defaultValue, onValueChange, skipRefresh, sessionOnly)
+    function addon:_AddColorPicker(parent, yOffset, panelKey, name, defaultValue, onValueChange, skipRefresh, sessionOnly)
         local addonInstance = self
         parent, yOffset, panelKey, name, defaultValue, onValueChange, skipRefresh, sessionOnly = callHook(self,
             "BeforeAddColorPicker", parent, yOffset, panelKey, name, defaultValue, onValueChange, skipRefresh,
@@ -1246,7 +1237,7 @@ do -- Controls
 
         colorPicker.ColorSwatch.Color = colorPicker.ColorSwatch:CreateTexture(nil, "ARTWORK")
         local hexValue = currentValue or defaultValue
-        local r, g, b, a = self:hexToRGB(hexValue)
+        local r, g, b, a = self:HexToRGB(hexValue)
         colorPicker.ColorSwatch.Color:SetColorTexture(r, g, b, a)
         colorPicker.ColorSwatch.Color:SetPoint("TOPLEFT", 2, -2)
         colorPicker.ColorSwatch.Color:SetPoint("BOTTOMRIGHT", -2, 2)
@@ -1257,7 +1248,7 @@ do -- Controls
         colorPicker.ColorSwatch.Border:SetDrawLayer("BORDER", 0)
 
         local function updateColor(hexColor)
-            local r, g, b, a = self:hexToRGB(hexColor)
+            local r, g, b, a = self:HexToRGB(hexColor)
             colorPicker.ColorSwatch.Color:SetColorTexture(r, g, b, a)
             if sessionOnly ~= true then
                 self.settings[panelKey][name] = hexColor
@@ -1274,23 +1265,23 @@ do -- Controls
         end
 
         colorPicker.ColorSwatch:SetScript("OnClick", function(self)
-            local r, g, b, a = addonInstance:hexToRGB((sessionOnly ~= true) and addonInstance.settings[panelKey][name] or
+            local r, g, b, a = addonInstance:HexToRGB((sessionOnly ~= true) and addonInstance.settings[panelKey][name] or
                                                           currentValue or defaultValue)
 
             ColorPickerFrame:SetupColorPickerAndShow({
                 swatchFunc = function()
                     local newR, newG, newB = ColorPickerFrame:GetColorRGB()
                     local newA = ColorPickerFrame:GetColorAlpha()
-                    local hexColor = addonInstance:rgbToHex(newR, newG, newB, newA)
+                    local hexColor = addonInstance:RgbToHex(newR, newG, newB, newA)
                     updateColor(hexColor)
                 end,
                 cancelFunc = function()
-                    updateColor(addonInstance:rgbToHex(r, g, b, a))
+                    updateColor(addonInstance:RgbToHex(r, g, b, a))
                 end,
                 opacityFunc = function()
                     local newR, newG, newB = ColorPickerFrame:GetColorRGB()
                     local newA = ColorPickerFrame:GetColorAlpha()
-                    local hexColor = addonInstance:rgbToHex(newR, newG, newB, newA)
+                    local hexColor = addonInstance:RgbToHex(newR, newG, newB, newA)
                     updateColor(hexColor)
                 end,
                 r = r,
@@ -1309,7 +1300,7 @@ do -- Controls
                     value = defaultValue
                 end
                 print("[ColorPicker REFRESH] panelKey=" .. tostring(panelKey) .. ", name=" .. tostring(name) .. ", hex=" .. tostring(value))
-                local r, g, b, a = self:hexToRGB(value)
+                local r, g, b, a = self:HexToRGB(value)
                 print("[ColorPicker REFRESH] RGBA: r=" .. tostring(r) .. ", g=" .. tostring(g) .. ", b=" .. tostring(b) .. ", a=" .. tostring(a))
                 colorPicker.ColorSwatch.Color:SetColorTexture(r, g, b, a)
             end
@@ -1334,7 +1325,7 @@ do -- Controls
         return colorPicker, newYOffset
     end
 
-    function addon:AddDescription(parent, yOffset, panelKey, name, onClick)
+    function addon:_AddDescription(parent, yOffset, panelKey, name, onClick)
         local addonInstance = self
         parent, yOffset, panelKey, name, onClick = callHook(self, "BeforeAddDescription", parent, yOffset, panelKey,
             name, onClick)
@@ -1374,7 +1365,7 @@ do -- Controls
         return frame, newYOffset
     end
 
-    function addon:AddDivider(parent, yOffset, panelKey)
+    function addon:_AddDivider(parent, yOffset, panelKey)
         parent, yOffset, panelKey = callHook(self, "BeforeAddDivider", parent, yOffset, panelKey)
 
         paddingTop = 0
@@ -1397,7 +1388,7 @@ do -- Controls
         return frame, newYOffset
     end
 
-    function addon:AddInputBox(parent, yOffset, panelKey, name, default, highlightText, buttonText, onClick,
+    function addon:_AddInputBox(parent, yOffset, panelKey, name, default, highlightText, buttonText, onClick,
         onValueChange, sessionOnly)
         local addonInstance = self
         parent, yOffset, panelKey, name, default, highlightText, buttonText, onClick, onValueChange, sessionOnly =
@@ -1542,11 +1533,11 @@ do -- Controls
         return control, newYOffset
     end
 
-    function addon:ShowDialog(dialogOptions)
+    function addon:_ShowDialog(dialogOptions)
         local addonInstance = self
         dialogOptions = callHook(self, "BeforeShowDialog", dialogOptions)
 
-        self:debug("ShowDialog called")
+        self:Debug("ShowDialog called")
         local dialog = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
 
         local uiCfg = self.config.ui
@@ -1624,70 +1615,70 @@ do -- Controls
         return dialog
     end
 
-    function addon:AddControl(parent, yOffset, panelKey, controlConfig)
+    function addon:_AddControl(parent, yOffset, panelKey, controlConfig)
         parent, yOffset, panelKey, controlConfig = callHook(self, "BeforeAddControl", parent, yOffset, panelKey,
             controlConfig)
 
         local controlType = controlConfig.type
 
         if controlType == "header" then
-            local control, newYOffset = self:AddHeader(parent, yOffset, panelKey, controlConfig.name)
+            local control, newYOffset = self:_AddHeader(parent, yOffset, panelKey, controlConfig.name)
             callHook(self, "AfterAddControl", control, newYOffset)
             return control, newYOffset
 
         elseif controlType == "checkbox" then
-            local control, newYOffset = self:AddCheckbox(parent, yOffset, panelKey, controlConfig.name,
+            local control, newYOffset = self:_AddCheckbox(parent, yOffset, panelKey, controlConfig.name,
                 controlConfig.default, controlConfig.onValueChange, controlConfig.skipRefresh, controlConfig.sessionOnly)
             callHook(self, "AfterAddControl", control, newYOffset)
             return control, newYOffset
 
         elseif controlType == "dropdown" then
-            local control, newYOffset = self:AddDropdown(parent, yOffset, panelKey, controlConfig.name,
+            local control, newYOffset = self:_AddDropdown(parent, yOffset, panelKey, controlConfig.name,
                 controlConfig.default, controlConfig.options, controlConfig.onValueChange, controlConfig.skipRefresh,
                 controlConfig.sessionOnly)
             callHook(self, "AfterAddControl", control, newYOffset)
             return control, newYOffset
 
         elseif controlType == "slider" then
-            local control, newYOffset = self:AddSlider(parent, yOffset, panelKey, controlConfig.name,
+            local control, newYOffset = self:_AddSlider(parent, yOffset, panelKey, controlConfig.name,
                 controlConfig.default, controlConfig.min, controlConfig.max, controlConfig.step,
                 controlConfig.onValueChange, controlConfig.skipRefresh, controlConfig.sessionOnly)
             callHook(self, "AfterAddControl", control, newYOffset)
             return control, newYOffset
 
         elseif controlType == "button" then
-            local control, newYOffset = self:AddButton(parent, yOffset, panelKey, controlConfig.name,
+            local control, newYOffset = self:_AddButton(parent, yOffset, panelKey, controlConfig.name,
                 controlConfig.onClick)
             callHook(self, "AfterAddControl", control, newYOffset)
             return control, newYOffset
 
         elseif controlType == "description" then
-            local control, newYOffset = self:AddDescription(parent, yOffset, panelKey, controlConfig.name,
+            local control, newYOffset = self:_AddDescription(parent, yOffset, panelKey, controlConfig.name,
                 controlConfig.onClick)
             callHook(self, "AfterAddControl", control, newYOffset)
             return control, newYOffset
 
         elseif controlType == "inputBox" then
             local buttonText = controlConfig.buttonText and self:L(controlConfig.buttonText) or nil
-            local control, newYOffset = self:AddInputBox(parent, yOffset, panelKey, controlConfig.name,
+            local control, newYOffset = self:_AddInputBox(parent, yOffset, panelKey, controlConfig.name,
                 controlConfig.default, controlConfig.highlightText, buttonText, controlConfig.onClick,
                 controlConfig.onValueChange, controlConfig.sessionOnly)
             callHook(self, "AfterAddControl", control, newYOffset)
             return control, newYOffset
 
         elseif controlType == "colorPicker" then
-            local control, newYOffset = self:AddColorPicker(parent, yOffset, panelKey, controlConfig.name,
+            local control, newYOffset = self:_AddColorPicker(parent, yOffset, panelKey, controlConfig.name,
                 controlConfig.default, controlConfig.onValueChange, controlConfig.skipRefresh, controlConfig.sessionOnly)
             callHook(self, "AfterAddControl", control, newYOffset)
             return control, newYOffset
 
         elseif controlType == "divider" then
-            local control, newYOffset = self:AddDivider(parent, yOffset, panelKey)
+            local control, newYOffset = self:_AddDivider(parent, yOffset, panelKey)
             callHook(self, "AfterAddControl", control, newYOffset)
             return control, newYOffset
 
         else
-            self:debug("Unknown control type: " .. tostring(controlType))
+            self:Debug("Unknown control type: " .. tostring(controlType))
             callHook(self, "AfterAddControl", false, yOffset)
             return false, yOffset
         end
@@ -1696,7 +1687,7 @@ end
 
 do -- Utility Functions
 
-    function addon:hexToRGB(hex)
+    function addon:HexToRGB(hex)
         hex = hex:gsub("#", "")
         local r = tonumber(hex:sub(1, 2), 16) / 255
         local g = tonumber(hex:sub(3, 4), 16) / 255
@@ -1708,7 +1699,7 @@ do -- Utility Functions
         return r, g, b, a
     end
 
-    function addon:rgbToHex(r, g, b, a)
+    function addon:RgbToHex(r, g, b, a)
         r = math.floor(r * 255 + 0.5)
         g = math.floor(g * 255 + 0.5)
         b = math.floor(b * 255 + 0.5)
@@ -1723,7 +1714,7 @@ do -- Utility Functions
         callHook(self, "BeforeOpenSettings")
 
         if InCombatLockdown() then
-            self:error(self:L("core_cannotOpenInCombat"))
+            self:Error(self:L("core_cannotOpenInCombat"))
             callHook(self, "AfterOpenSettings", false)
             return false
         end
@@ -1764,17 +1755,17 @@ do -- Utility Functions
         return result
     end
 
-    function addon:coreInfo(text)
+    function addon:_coreInfo(text)
         print("\124cffDB09FE" .. "SAdCore" .. ": " .. "\124cffBAFF1A" .. tostring(text))
     end
 
-    function addon:coreDebug(text)
+    function addon:_coreDebug(text)
         if self.settings and self.settings.main and self.settings.main.core_enableDebugging then
             print("\124cffDB09FE" .. "SAdCore" .. " Debug: " .. "\124cffBAFF1A" .. tostring(text))
         end
     end
 
-    function addon:info(text)
+    function addon:Info(text)
         text = callHook(self, "BeforeInfo", text)
 
         print("\124cffDB09FE" .. self.addonName .. ": " .. "\124cffBAFF1A" .. tostring(text))
@@ -1784,7 +1775,7 @@ do -- Utility Functions
         return returnValue
     end
 
-    function addon:error(text)
+    function addon:Error(text)
         text = callHook(self, "BeforeError", text)
 
         print("\124cffDB09FE" .. self.addonName .. ": " .. "\124cffBAFF1A" .. tostring(text))
@@ -1794,7 +1785,7 @@ do -- Utility Functions
         return returnValue
     end
 
-    function addon:debug(text)
+    function addon:Debug(text)
         text = callHook(self, "BeforeDebug", text)
        
         if self.settings and self.settings.main and self.settings.main.core_enableDebugging then
@@ -1806,7 +1797,7 @@ do -- Utility Functions
         return returnValue
     end
 
-    function addon:dump(value, name)
+    function addon:Dump(value, name)
         value, name = callHook(self, "BeforeDump", value, name)
         
         DevTools_Dump(value, name or self.addonName)
@@ -1816,7 +1807,7 @@ do -- Utility Functions
         return returnValue
     end
 
-    function addon:RefreshSettingsPanels()
+    function addon:_RefreshSettingsPanels()
         callHook(self, "BeforeRefreshSettingsPanels")
 
         if self.settingsPanels then
@@ -1834,25 +1825,25 @@ do -- Utility Functions
         return returnValue
     end
 
-    function addon:UpdateActiveSettings(useCharacter)
+    function addon:_UpdateActiveSettings(useCharacter)
         useCharacter = callHook(self, "BeforeUpdateActiveSettings", useCharacter)
-        self:debug("UpdateActiveSettings called with: " .. tostring(useCharacter) .. " (type: " .. type(useCharacter) ..
+        self:Debug("UpdateActiveSettings called with: " .. tostring(useCharacter) .. " (type: " .. type(useCharacter) ..
                        ")")
-        self:debug("settingsChar exists: " .. tostring(self.settingsChar ~= nil) .. ", settingsGlobal exists: " ..
+        self:Debug("settingsChar exists: " .. tostring(self.settingsChar ~= nil) .. ", settingsGlobal exists: " ..
                        tostring(self.settingsGlobal ~= nil))
 
         self.settings = useCharacter and self.settingsChar or self.settingsGlobal
 
         local profileType = useCharacter and "Character" or "Global"
-        self:debug("Profile switched to: " .. profileType)
-        self:RefreshSettingsPanels()
+        self:Debug("Profile switched to: " .. profileType)
+        self:_RefreshSettingsPanels()
 
         local returnValue = true
         callHook(self, "AfterUpdateActiveSettings", returnValue)
         return returnValue
     end
 
-    function addon:ExportSettings()
+    function addon:_ExportSettings()
         callHook(self, "BeforeExportSettings")
 
         local exportData = {
@@ -1867,20 +1858,20 @@ do -- Utility Functions
             return LibSerialize:Serialize(exportData)
         end)
         if not success or not serialized then
-            self:debug("Serialize failed.")
+            self:Debug("Serialize failed.")
             callHook(self, "AfterExportSettings", false)
             return false
         end
         local encoded = LibCompress:Encode(serialized)
         if not encoded then
-            self:debug("Encode failed.")
+            self:Debug("Encode failed.")
             callHook(self, "AfterExportSettings", false)
             return false
         end
 
-        self:debug(encoded)
+        self:Debug(encoded)
 
-        self:ShowDialog({
+        self:_ShowDialog({
             title = "core_shareSettingsTitle",
             controls = {{
                 type = "inputBox",
@@ -1894,7 +1885,7 @@ do -- Utility Functions
         return encoded
     end
 
-    function addon:ImportSettings(serializedString)
+    function addon:_ImportSettings(serializedString)
         serializedString = callHook(self, "BeforeImportSettings", serializedString)
 
         if not serializedString or serializedString == "" then
@@ -1904,75 +1895,75 @@ do -- Utility Functions
         end
 
         serializedString = serializedString:match("^%s*(.-)%s*$")
-        self:debug("Import string length after trim: " .. #serializedString)
+        self:Debug("Import string length after trim: " .. #serializedString)
 
         local LibSerialize = self.LibSerialize
         local LibCompress = self.LibCompress
 
-        self:debug("Decoding import string...")
+        self:Debug("Decoding import string...")
         local decoded = LibCompress:Decode(serializedString)
         if not decoded then
-            self:error(self:L("core_importDecodeFailed"))
-            self:debug("Decode returned nil - invalid base64 string")
+            self:Error(self:L("core_importDecodeFailed"))
+            self:Debug("Decode returned nil - invalid base64 string")
             callHook(self, "AfterImportSettings", false)
             return false
         end
-        self:debug("Decode successful. Decoded length: " .. #decoded)
+        self:Debug("Decode successful. Decoded length: " .. #decoded)
 
-        self:debug("Deserializing...")
+        self:Debug("Deserializing...")
         local data, err = LibSerialize:Deserialize(decoded)
         if not data then
-            self:error(self:L("core_importDeserializeFailed") .. ": " .. tostring(err))
-            self:debug("Deserialization failed. Error: " .. tostring(err))
+            self:Error(self:L("core_importDeserializeFailed") .. ": " .. tostring(err))
+            self:Debug("Deserialization failed. Error: " .. tostring(err))
             callHook(self, "AfterImportSettings", false)
             return false
         end
-        self:debug("Deserialization successful")
+        self:Debug("Deserialization successful")
 
         if type(data) ~= "table" then
-            self:error(self:L("core_importInvalidData"))
-            self:debug("Data is not a table. Type: " .. type(data))
+            self:Error(self:L("core_importInvalidData"))
+            self:Debug("Data is not a table. Type: " .. type(data))
             callHook(self, "AfterImportSettings", false)
             return false
         end
 
-        self:debug("Data is a table, checking contents...")
+        self:Debug("Data is a table, checking contents...")
 
         local keys = {}
         for k, v in pairs(data) do
             table.insert(keys, tostring(k) .. "=" .. tostring(v))
         end
-        self:debug("Data keys: " .. table.concat(keys, ", "))
+        self:Debug("Data keys: " .. table.concat(keys, ", "))
 
-        self:debug("Import: - addon: " .. tostring(data.addon) .. ", version: " .. tostring(data.version))
-        self:debug("Loaded: - addon: " .. tostring(self.addonName) .. ", version: " ..tostring(self.config.version))
+        self:Debug("Import: - addon: " .. tostring(data.addon) .. ", version: " .. tostring(data.version))
+        self:Debug("Loaded: - addon: " .. tostring(self.addonName) .. ", version: " ..tostring(self.config.version))
 
         if data.addon ~= self.addonName then
-            self:error(self:L("core_importWrongAddon") .. ": " .. tostring(data.addon) .. " (expected: " ..
+            self:Error(self:L("core_importWrongAddon") .. ": " .. tostring(data.addon) .. " (expected: " ..
                            tostring(self.addonName) .. ")")
-            self:debug("Addon name mismatch: '" .. tostring(data.addon) .. "' != '" .. tostring(self.addonName) .. "'")
+            self:Debug("Addon name mismatch: '" .. tostring(data.addon) .. "' != '" .. tostring(self.addonName) .. "'")
             callHook(self, "AfterImportSettings", false)
             return false
         end
 
-        self:debug("Addon name check passed")
+        self:Debug("Addon name check passed")
 
         if tostring(data.version) ~= tostring(self.config.version) then
-            self:info(self:L("core_importAddonVersionMismatch") .. " " .. self:L("core_installed") .. ": " ..
+            self:Info(self:L("core_importAddonVersionMismatch") .. " " .. self:L("core_installed") .. ": " ..
                           tostring(self.config.version) .. ", " .. self:L("core_importString") .. ": " ..
                           tostring(data.version) .. ". " .. self:L("core_dataMismatchWarning"))
         end
 
         if not data.settings or type(data.settings) ~= "table" then
-            self:error(self:L("importInvalidSettings"))
-            self:debug("data.settings is not a table. Type: " .. type(data.settings))
+            self:Error(self:L("importInvalidSettings"))
+            self:Debug("data.settings is not a table. Type: " .. type(data.settings))
             callHook(self, "AfterImportSettings", false)
             return false
         end
 
         local importedSettings = data.settings
 
-        self:debug("Clearing current settings and importing...")
+        self:Debug("Clearing current settings and importing...")
         for key in pairs(self.settings) do
             self.settings[key] = nil
         end
@@ -1982,7 +1973,7 @@ do -- Utility Functions
         end
 
         self:info(self:L("core_importSuccess"))
-        self:RefreshSettingsPanels()
+        self:_RefreshSettingsPanels()
 
         callHook(self, "AfterImportSettings", true)
         return true
@@ -1992,7 +1983,7 @@ end
 
 do -- Combat Queue System
 
-    function addon:InitializeCombatQueue()
+    function addon:_InitializeCombatQueue()
         callHook(self, "BeforeInitializeCombatQueue")
 
         self.combatQueue = self.combatQueue or {}
@@ -2004,7 +1995,7 @@ do -- Combat Queue System
             self.combatQueueFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
             self.combatQueueFrame:SetScript("OnEvent", function(frame, event)
                 if event == "PLAYER_REGEN_ENABLED" then
-                    addonInstance:ProcessCombatQueue()
+                    addonInstance:_ProcessCombatQueue()
                 end
             end)
         end
@@ -2014,7 +2005,7 @@ do -- Combat Queue System
         return returnValue
     end
 
-    function addon:WrapCombatSafeFunctions()
+    function addon:_WrapCombatSafeFunctions()
         callHook(self, "BeforeWrapCombatSafeFunctions")
 
         if not self.CombatSafe then
@@ -2033,7 +2024,7 @@ do -- Combat Queue System
                             func = originalFunc,
                             args = args
                         })
-                        addonInstance:debug("Action queued for after combat: " .. funcName)
+                        addonInstance:Debug("Action queued for after combat: " .. funcName)
                         return false
                     end
 
@@ -2042,7 +2033,7 @@ do -- Combat Queue System
                     if success then
                         return result
                     else
-                        addonInstance:error(addonInstance:L("core_combatSafeFunctionError") .. " " .. funcName .. ": " .. tostring(result))
+                        addonInstance:Error(addonInstance:L("core_combatSafeFunctionError") .. " " .. funcName .. ": " .. tostring(result))
                         return false
                     end
                 end
@@ -2054,7 +2045,7 @@ do -- Combat Queue System
         return returnValue
     end
 
-    function addon:ProcessCombatQueue()
+    function addon:_ProcessCombatQueue()
         callHook(self, "BeforeProcessCombatQueue")
 
         if not self.combatQueue or #self.combatQueue == 0 then
@@ -2063,7 +2054,7 @@ do -- Combat Queue System
         end
 
         local queueCount = #self.combatQueue
-        self:debug("Processing queued actions: " .. queueCount)
+        self:Debug("Processing queued actions: " .. queueCount)
 
         local processedCount = 0
         local failedCount = 0
@@ -2076,16 +2067,16 @@ do -- Combat Queue System
                 processedCount = processedCount + 1
             else
                 failedCount = failedCount + 1
-                self:error(self:L("core_queuedActionFailed") .. ": " .. tostring(result))
+                self:Error(self:L("core_queuedActionFailed") .. ": " .. tostring(result))
             end
         end
 
         if processedCount > 0 then
-            self:debug("Processed actions: " .. processedCount)
+            self:Debug("Processed actions: " .. processedCount)
         end
 
         if failedCount > 0 then
-            self:debug("Failed actions: " .. failedCount)
+            self:Debug("Failed actions: " .. failedCount)
         end
 
         local returnValue = true
@@ -2093,14 +2084,14 @@ do -- Combat Queue System
         return returnValue
     end
 
-    function addon:ClearCombatQueue()
+    function addon:_ClearCombatQueue()
         callHook(self, "BeforeClearCombatQueue")
 
         local queueCount = #self.combatQueue
         self.combatQueue = {}
 
         if queueCount > 0 then
-            self:debug("Cleared queued actions: " .. queueCount)
+            self:Debug("Cleared queued actions: " .. queueCount)
         end
 
         local returnValue = true
@@ -2334,3 +2325,19 @@ do -- Localization
     }
 
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

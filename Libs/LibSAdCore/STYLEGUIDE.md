@@ -64,18 +64,18 @@ end
 
 ### All User-Facing Messages Must Use Localization
 
-All `info` and `error` messages MUST use localization strings via `self:L()`:
+All `Info` and `Error` messages MUST use localization strings via `self:L()`:
 
 **✅ Correct:**
 ```lua
-self:error(self:L("frameNotFound") .. ": " .. frameName)
-self:info(self:L("importSuccess"))
+self:Error(self:L("frameNotFound") .. ": " .. frameName)
+self:Info(self:L("importSuccess"))
 ```
 
 **❌ Incorrect:**
 ```lua
-self:error("Frame not found: " .. frameName)
-self:info("Import successful")
+self:Error("Frame not found: " .. frameName)
+self:Info("Import successful")
 ```
 
 This ensures the framework can be localized for different languages.
@@ -190,7 +190,7 @@ end
 
 local success = ProcessData(data)
 if success then
-    self:info(self:L("operationSuccess"))
+    self:Info(self:L("operationSuccess"))
 end
 ```
 
@@ -208,7 +208,7 @@ end
 
 local failed = not ProcessData(data)
 if not failed then
-    self:info(self:L("operationSuccess"))
+    self:Info(self:L("operationSuccess"))
 end
 ```
 
