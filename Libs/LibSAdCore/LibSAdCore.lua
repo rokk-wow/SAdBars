@@ -509,10 +509,7 @@ do -- Registration functions
     function addon:RegisterSlashCommand(command, callback)
         command, callback = callHook(self, "BeforeRegisterSlashCommand", command, callback)
 
-        if not self.slashCommands then
-            self.slashCommands = {}
-        end
-
+        self.slashCommands = self.slashCommands or {}
         self.slashCommands[command:lower()] = callback
 
         local returnValue = true
@@ -524,7 +521,7 @@ do -- Registration functions
         local addonInstance = self
         callHook(self, "BeforeCreateSlashCommand")
 
-        self.slashCommands = {}
+        self.slashCommands = self.slashCommands or {}
 
         local slashCommandName = self.addonName:upper()
         _G["SLASH_" .. slashCommandName .. "1"] = "/" .. self.addonName:lower()
@@ -539,7 +536,7 @@ do -- Registration functions
                         table.insert(params, param)
                     end
                 end
-                addonInstance.slashCommands[command](unpack(params))
+                addonInstance.slashCommands[command](addonInstance, unpack(params))
             else
                 addonInstance:OpenSettings()
             end
