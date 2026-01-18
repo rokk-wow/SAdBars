@@ -16,6 +16,13 @@ addon.actionBars = {
     { name = "MultiBar7", frame = MultiBar7, buttonPrefix = "MultiBar7Button" },
 }
 
+addon.vars = addon.vars or {
+    borderWidth = 1,
+    borderColor = "000000FF",
+    iconZoom = 0.1,
+    buttonPadding = 2
+}
+
 addon.CombatSafe = addon.CombatSafe or {}
 
 addon.CombatSafe.UpdateActionBars = function(self)
@@ -24,10 +31,14 @@ addon.CombatSafe.UpdateActionBars = function(self)
     self:AddActionButtonBorders()
     self:SetButtonPadding()
     self:HideMacroText()
-    self.HideSpellCastAnimFrame()
+    self:HideKeybindText()
+    self:HideSpellCastAnimFrame()
     self:AddActionBarBackgrounds()
     self:UpdateAssistedHighlightVisibility()
     self:CustomizeAssistedHighlightGlow()
+    self:ZoomButtonIcons()
+    self:GCDSwipe()
+    self:SwipePOC()
 end
 
 function addon:LoadConfig()
@@ -48,11 +59,9 @@ function addon:LoadConfig()
 end
 
 function addon:RegisterFunctions()
-    self:RegisterEvent("PLAYER_ENTERING_WORLD", self.OnPlayerEnteringWorld)
-end
-
-function addon:OnPlayerEnteringWorld(event)
-    self.CombatSafe:UpdateActionBars()
+    self:RegisterEvent("PLAYER_ENTERING_WORLD", function(event)
+        self.CombatSafe:UpdateActionBars()
+    end)
 end
 
 function addon:IterateActionButtons(callback)
@@ -85,9 +94,9 @@ function addon:addBorder(bar, borderWidth, borderColor)
     
     local size = borderWidth or addon.vars.borderWidth
     local colorHex = borderColor or addon.vars.borderColor
-    local r, g, b, a = hexToRGB(colorHex)
+    local r, g, b, a = self:hexToRGB(colorHex)
     
-    local borders = bar.SAdUnitFrames_Borders
+    local borders = bar.SAdBars_Borders
     
     if borders then
         borders.top:SetColorTexture(r, g, b, a)
@@ -129,7 +138,7 @@ function addon:addBorder(bar, borderWidth, borderColor)
         borders.right:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
         borders.right:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
         
-        bar.SAdUnitFrames_Borders = borders
+        bar.SAdBars_Borders = borders
     end
 end
 
@@ -249,7 +258,7 @@ function addon:HideKeybindText()
     self:IterateActionButtons(hideButtonKeybind)
 end
 
-function addon.HideSpellCastAnimFrame()
+function addon:HideSpellCastAnimFrame()
     local function hideButtonGlow(button)
         if button and button.SpellCastAnimFrame then
             button.SpellCastAnimFrame:SetAlpha(0)
@@ -330,7 +339,7 @@ function addon.HideSpellCastAnimFrame()
         end
     end
     
-    addon:IterateActionButtons(function(button, buttonName)
+    self:IterateActionButtons(function(button, buttonName)
         hideButtonGlow(button)
     end)
 end
@@ -395,4 +404,91 @@ function addon:CustomizeAssistedHighlightGlow()
             UpdateAssistedHighlight(actionButton, shown)
         end)
     end
+end
+
+function addon:ZoomButtonIcons()
+    local zoom = addon.vars.iconZoom
+    local inset = zoom / 2
+    
+    local function zoomButtonIcon(button, buttonName)
+        if button and button.icon then
+            button.icon:SetTexCoord(inset, 1 - inset, inset, 1 - inset)
+            
+            if button.cooldown then
+                button.cooldown:ClearAllPoints()
+                button.cooldown:SetAllPoints(button)
+                button.cooldown:SetSwipeColor(0, 0, 0, 0.5)
+            end
+        end
+    end
+    
+    self:IterateActionButtons(zoomButtonIcon)
+end
+
+function addon:GCDSwipe()
+    local function hideCooldownSwipe(button, buttonName)
+        if button and button.cooldown then
+            button.cooldown:SetDrawSwipe(false)
+            button.cooldown:SetDrawEdge(false)
+            
+            if not button.cooldown.__SAdBars_HideHooked then
+                button.cooldown.__SAdBars_HideHooked = true
+                hooksecurefunc(button.cooldown, "SetCooldown", function(self)
+                    self:SetDrawSwipe(false)
+                    self:SetDrawEdge(false)
+                end)
+            end
+        end
+    end
+    
+    self:IterateActionButtons(hideCooldownSwipe)
+end
+
+function addon:SwipePOC()
+    local gcdButtons = {
+        ActionButton3 = true,
+        ActionButton4 = true,
+        ActionButton6 = true,
+        ActionButton7 = true,
+        ActionButton8 = true,
+        MultiBarBottomLeftButton1 = true,
+        MultiBarBottomLeftButton2 = true,
+        MultiBarBottomLeftButton5 = true,
+        MultiBarBottomLeftButton6 = true,
+        MultiBarBottomLeftButton7 = true,
+        MultiBarBottomLeftButton9 = true,
+        MultiBarBottomLeftButton10 = true,
+        MultiBarBottomLeftButton11 = true,
+        MultiBarBottomLeftButton12 = true,
+    }
+    
+    local function addGCDOverlay(button, buttonName)
+        if button and not button.SAdBars_GCDCooldown and gcdButtons[buttonName] then
+            local gcdCooldown = CreateFrame("Cooldown", buttonName .. "_SAdBars_GCD", button, "CooldownFrameTemplate")
+            gcdCooldown:SetAllPoints(button)
+            gcdCooldown:SetDrawEdge(false)
+            gcdCooldown:SetDrawBling(false)
+            gcdCooldown:SetSwipeColor(0, 0, 0, 0.9)
+            gcdCooldown:SetHideCountdownNumbers(true)
+            gcdCooldown:SetFrameLevel(button:GetFrameLevel() + 5)
+            
+            button.SAdBars_GCDCooldown = gcdCooldown
+        end
+    end
+    
+    self:IterateActionButtons(addGCDOverlay)
+    
+    self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", function(event, unit, castGUID, spellID)
+        if unit == "player" then
+            local cooldownInfo = C_Spell.GetSpellCooldown(61304)
+            
+            if cooldownInfo and cooldownInfo.startTime > 0 and cooldownInfo.duration > 0 and cooldownInfo.duration <= 1.5 then
+                self:IterateActionButtons(function(button, buttonName)
+                    if button and button.SAdBars_GCDCooldown and gcdButtons[buttonName] then
+                        button.SAdBars_GCDCooldown:SetCooldown(cooldownInfo.startTime, cooldownInfo.duration)
+                    end
+                end)
+            end
+        end
+    end)
 end

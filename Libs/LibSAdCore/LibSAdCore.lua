@@ -217,7 +217,7 @@ end
 --[[============================================================================
     SAdCore - Simple Addon Core
 ==============================================================================]]
-local SADCORE_MAJOR, SADCORE_MINOR = "SAdCore-1", 4
+local SADCORE_MAJOR, SADCORE_MINOR = "SAdCore-1", 5
 local SAdCore, oldminor = LibStub:NewLibrary(SADCORE_MAJOR, SADCORE_MINOR)
 if not SAdCore then
     return
@@ -2024,24 +2024,25 @@ do -- Combat Queue System
 
         for funcName, originalFunc in pairs(self.CombatSafe) do
             if type(originalFunc) == "function" then
-                self.CombatSafe[funcName] = function(self, ...)
+                local addonInstance = self
+                self.CombatSafe[funcName] = function(_, ...)
                     local args = {...}
 
                     if InCombatLockdown() then
-                        table.insert(self.combatQueue, {
+                        table.insert(addonInstance.combatQueue, {
                             func = originalFunc,
                             args = args
                         })
-                        self:debug("Action queued for after combat: " .. funcName)
+                        addonInstance:debug("Action queued for after combat: " .. funcName)
                         return false
                     end
 
-                    local success, result = pcall(originalFunc, self, unpack(args))
+                    local success, result = pcall(originalFunc, addonInstance, unpack(args))
 
                     if success then
                         return result
                     else
-                        self:error(self:L("core_combatSafeFunctionError") .. " " .. funcName .. ": " .. tostring(result))
+                        addonInstance:error(addonInstance:L("core_combatSafeFunctionError") .. " " .. funcName .. ": " .. tostring(result))
                         return false
                     end
                 end
