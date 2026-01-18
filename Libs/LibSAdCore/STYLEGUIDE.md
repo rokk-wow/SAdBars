@@ -60,6 +60,23 @@ function addon:FunctionName(params)
 end
 ```
 
+## Example: Correct Initialize Section
+
+```lua
+do -- Initialize
+
+    function addon:_Initialize(savedVarsGlobal, savedVarsPerChar)
+        callHook(self, "BeforeInitialize", savedVarsGlobal, savedVarsPerChar)
+        
+        -- Initialization logic here
+        
+        local returnValue = true
+        callHook(self, "AfterInitialize", returnValue)
+        return returnValue
+    end
+end
+```
+
 ## Localization Requirements
 
 ### All User-Facing Messages Must Use Localization
@@ -115,7 +132,7 @@ Code should be self-documenting. Comments should be rare and strategic.
 
 1. **Section Header Comments** - Large sections with `do` scopes:
    ```lua
-   do -- Initialization
+   do -- Initialize
        -- functions here
    end
    

@@ -6,7 +6,7 @@ addon.savedVarsGlobalName = "MyAddon_Settings_Global"
 addon.savedVarsPerCharName = "MyAddon_Settings_Char"
 addon.compartmentFuncName = "MyAddon_Compartment_Func"
 
-function addon:Initialization()
+function addon:Initialize()
     self.config.version = "1.0"
     self.author = "Rôkk-Wyrmrest Accord"
 

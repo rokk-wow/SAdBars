@@ -68,7 +68,7 @@ SAddons are:
    addon.savedVarsPerCharName = "MyAddon_Settings_Char"
    addon.compartmentFuncName = "MyAddon_Compartment_Func"
    
-   function addon:Initialization()
+   function addon:Initialize()
        self.config.version = "1.0"
        self.author = "Your Name"
        
@@ -137,7 +137,7 @@ SAddons are:
 This example shows all available control types using the same naming convention and structure as `Addon_Example.lua`:
 
 ```lua
-function addon:Initialization()
+function addon:Initialize()
     self.config.version = "1.0"
     self.author = "Your Name"
     
@@ -370,7 +370,7 @@ You can register additional commands as **parameters** to the main slash command
 
 **Example:**
 ```lua
-function addon:Initialization()
+function addon:Initialize()
     self.config.version = "1.0"
     self.author = "Your Name"
     
@@ -406,7 +406,7 @@ end
 Register WoW events with `self:RegisterEvent(eventName, callback)`:
 
 ```lua
-function addon:Initialization()
+function addon:Initialize()
     self.config.version = "1.0"
     self.author = "Your Name"
     

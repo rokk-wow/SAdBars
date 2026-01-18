@@ -297,7 +297,7 @@ function SAdCore:GetAddon(addonName)
     return self.addons[addonName]
 end
 
-do -- Initialization
+do -- Initialize
 
     function addon:_Initialize(savedVarsGlobal, savedVarsPerChar)
         callHook(self, "BeforeInitialize", savedVarsGlobal, savedVarsPerChar)
@@ -391,8 +391,8 @@ do -- Initialization
         self.author = self.author or "SAdCore Framework"
         self:_InitializeSavedVariables(savedVarsGlobal, savedVarsPerChar)
 
-        if self.Initialization then
-            self:Initialization()
+        if self.Initialize then
+            self:Initialize()
         end
 
         self.LibSerialize = LibStub("LibSerialize")

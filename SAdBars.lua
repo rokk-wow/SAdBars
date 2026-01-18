@@ -40,7 +40,7 @@ addon.CombatSafe.UpdateActionBars = function(self)
     self:CooldownSwipe()
 end
 
-function addon:Initialization()
+function addon:Initialize()
     self.config.version = "1.0"
     self.author = "Rôkk-Wyrmrest Accord"
 
