@@ -1,0 +1,2335 @@
+-- LibSAdCore - Simple Addon Core Library
+-- LibSAdCore integrates the following libraries:
+-- * LibStub      
+-- * LibCompress      
+-- * LibSerialize
+-- Thank you to all the authors and contributors who make WoW addon iteration and development possible.
+-- LibSAdCore is freely offered forward to any developer who wants to fork, branch, embed or in any way
+-- use this code for further development.
+local LIBSTUB_MAJOR, LIBSTUB_MINOR = "LibStub", 2
+local LibStub = _G[LIBSTUB_MAJOR]
+
+if not LibStub or LibStub.minor < LIBSTUB_MINOR then
+    LibStub = LibStub or {
+        libs = {},
+        minors = {}
+    }
+    _G[LIBSTUB_MAJOR] = LibStub
+    LibStub.minor = LIBSTUB_MINOR
+
+    function LibStub:NewLibrary(major, minor)
+        assert(type(major) == "string", "Bad argument #2 to `NewLibrary' (string expected)")
+        minor = assert(tonumber(strmatch(minor, "%d+")), "Minor version must either be a number or contain a number.")
+
+        local oldminor = self.minors[major]
+        if oldminor and oldminor >= minor then
+            return nil
+        end
+        self.minors[major], self.libs[major] = minor, self.libs[major] or {}
+        return self.libs[major], oldminor
+    end
+
+    function LibStub:GetLibrary(major, silent)
+        if not self.libs[major] and not silent then
+            error(("Cannot find a library instance of %q."):format(tostring(major)), 2)
+        end
+        return self.libs[major], self.minors[major]
+    end
+
+    function LibStub:IterateLibraries()
+        return pairs(self.libs)
+    end
+
+    setmetatable(LibStub, {
+        __call = LibStub.GetLibrary
+    })
+end
+
+--[[============================================================================
+    LibCompress - Simple base64 encoding
+==============================================================================]]
+local LIBCOMPRESS_MAJOR, LIBCOMPRESS_MINOR = "LibCompress", 1
+local LibCompress = LibStub:NewLibrary(LIBCOMPRESS_MAJOR, LIBCOMPRESS_MINOR)
+if LibCompress then
+    local b64chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    local b64lookup = {}
+    for i = 1, #b64chars do
+        b64lookup[b64chars:sub(i, i)] = i - 1
+    end
+
+    function LibCompress:Encode(data)
+        if type(data) ~= "string" then
+            return nil, "Data must be a string"
+        end
+
+        return ((data:gsub('.', function(x)
+            local r, b = '', x:byte()
+            for i = 8, 1, -1 do
+                r = r .. (b % 2 ^ i - b % 2 ^ (i - 1) > 0 and '1' or '0')
+            end
+            return r
+        end) .. '0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
+            if #x < 6 then
+                return ''
+            end
+            local c = 0
+            for i = 1, 6 do
+                c = c + (x:sub(i, i) == '1' and 2 ^ (6 - i) or 0)
+            end
+            return b64chars:sub(c + 1, c + 1)
+        end) .. ({'', '==', '='})[#data % 3 + 1])
+    end
+
+    function LibCompress:Decode(data)
+        if type(data) ~= "string" then
+            return nil, "Data must be a string"
+        end
+
+        data = string.gsub(data, '[^' .. b64chars .. '=]', '')
+        return (data:gsub('.', function(x)
+            if x == '=' then
+                return ''
+            end
+            local r, f = '', b64lookup[x]
+            for i = 6, 1, -1 do
+                r = r .. (f % 2 ^ i - f % 2 ^ (i - 1) > 0 and '1' or '0')
+            end
+            return r
+        end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
+            if #x ~= 8 then
+                return ''
+            end
+            local c = 0
+            for i = 1, 8 do
+                c = c + (x:sub(i, i) == '1' and 2 ^ (8 - i) or 0)
+            end
+            return string.char(c)
+        end))
+    end
+
+    function LibCompress:Compress(data)
+        return self:Encode(data)
+    end
+
+    function LibCompress:Decompress(data)
+        return self:Decode(data)
+    end
+
+    function LibCompress:GetAddonEncodeTable()
+        local tbl = {}
+        function tbl:Encode(str)
+            return (str:gsub("%z", "\001\001"))
+        end
+        function tbl:Decode(str)
+            return (str:gsub("\001\001", "\000"))
+        end
+        return tbl
+    end
+end
+
+--[[============================================================================
+    LibSerialize - Simple table serialization
+==============================================================================]]
+local LIBSERIALIZE_MAJOR, LIBSERIALIZE_MINOR = "LibSerialize", 1
+local LibSerialize = LibStub:NewLibrary(LIBSERIALIZE_MAJOR, LIBSERIALIZE_MINOR)
+if LibSerialize then
+    local serialize_simple
+
+    local function serialize_value(v)
+        local tv = type(v)
+        if tv == "string" then
+            return string.format("%q", v)
+        elseif tv == "number" or tv == "boolean" then
+            return tostring(v)
+        elseif tv == "table" then
+            return serialize_simple(v)
+        else
+            return "nil"
+        end
+    end
+
+    serialize_simple = function(tbl)
+        local result = {}
+        result[1] = "{"
+        local first = true
+
+        for k, v in pairs(tbl) do
+            if not first then
+                table.insert(result, ",")
+            end
+            first = false
+
+            if type(k) == "string" then
+                table.insert(result, "[")
+                table.insert(result, string.format("%q", k))
+                table.insert(result, "]=")
+            elseif type(k) == "number" then
+                table.insert(result, "[")
+                table.insert(result, tostring(k))
+                table.insert(result, "]=")
+            else
+                first = true
+                table.remove(result)
+            end
+
+            if type(k) == "string" or type(k) == "number" then
+                table.insert(result, serialize_value(v))
+            end
+        end
+
+        table.insert(result, "}")
+        return table.concat(result)
+    end
+
+    function LibSerialize:Serialize(data)
+        if type(data) ~= "table" then
+            return nil, "Data must be a table"
+        end
+
+        local success, result = pcall(serialize_simple, data)
+        if not success then
+            return nil, result
+        end
+
+        return result
+    end
+
+    function LibSerialize:Deserialize(str)
+        if not str or str == "" then
+            return nil, "Empty string"
+        end
+
+        local sanitized = str:gsub("\r", ""):gsub("\n", ""):gsub("%s+", " ")
+        local func, err = loadstring("return " .. sanitized)
+        if not func then
+            return nil, "Parse error: " .. tostring(err)
+        end
+
+        local success, result = pcall(func)
+        if not success then
+            return nil, "Execution error: " .. tostring(result)
+        end
+
+        return result
+    end
+end
+
+--[[============================================================================
+    SAdCore - Simple Addon Core
+==============================================================================]]
+local SADCORE_MAJOR, SADCORE_MINOR = "SAdCore-1", 4
+local SAdCore, oldminor = LibStub:NewLibrary(SADCORE_MAJOR, SADCORE_MINOR)
+if not SAdCore then
+    return
+end
+
+SAdCore.addons = SAdCore.addons or {}
+SAdCore.prototype = SAdCore.prototype or {}
+
+local addon = SAdCore.prototype
+local function callHook(addonInstance, hookName, ...)
+    local hook = addonInstance[hookName]
+    if hook then
+        return hook(...)
+    end
+    return ...
+end
+
+local function getCoreLocaleString(key)
+    local clientLocale = GetLocale()
+    local locale = SAdCore.prototype.locale[clientLocale] or SAdCore.prototype.locale.enEN
+    return locale and locale[key] or key
+end
+
+function SAdCore:GetAddon(addonName)
+    if not self.addons[addonName] then
+        local newAddon = {
+            addonName = addonName,
+            core = self
+        }
+        setmetatable(newAddon, {
+            __index = self.prototype
+        })
+        self.addons[addonName] = newAddon
+
+        local addonInstance = newAddon
+        local eventFrame = CreateFrame("Frame")
+        eventFrame:RegisterEvent("ADDON_LOADED")
+        eventFrame:SetScript("OnEvent", function(self, event, loadedAddon)
+            if loadedAddon == addonInstance.addonName then
+                local hasError = not addonInstance.savedVarsGlobalName or
+                                 not addonInstance.savedVarsPerCharName or
+                                 not addonInstance.compartmentFuncName or
+                                 (addonInstance.savedVarsGlobalName and not string.find(addonInstance.savedVarsGlobalName, addonInstance.addonName, 1, true)) or
+                                 (addonInstance.savedVarsPerCharName and not string.find(addonInstance.savedVarsPerCharName, addonInstance.addonName, 1, true)) or
+                                 (addonInstance.compartmentFuncName and not string.find(addonInstance.compartmentFuncName, addonInstance.addonName, 1, true))
+
+                if hasError then
+                    addon.coreInfo(getCoreLocaleString("core_errorConfigHelp1"))
+                    addon.coreInfo(getCoreLocaleString("core_errorConfigHelp2"))
+                    addon.coreInfo(getCoreLocaleString("core_errorConfigExample") .. " '" .. addonInstance.addonName .. "':")
+                    addon.coreInfo("  savedVarsGlobalName = '" .. addonInstance.addonName .. "_Settings_Global'")
+                    addon.coreInfo("  savedVarsPerCharName = '" .. addonInstance.addonName .. "_Settings_Char'")
+                    addon.coreInfo("  compartmentFuncName = '" .. addonInstance.addonName .. "_Compartment_Func'")
+                    error(string.format("%s: %s - %s", getCoreLocaleString("core_SAdCore"), addonInstance.addonName,
+                        getCoreLocaleString("core_errorConfigHelp1")))
+                    return
+                end
+
+                _G[addonInstance.savedVarsGlobalName] = _G[addonInstance.savedVarsGlobalName] or {}
+                _G[addonInstance.savedVarsPerCharName] = _G[addonInstance.savedVarsPerCharName] or {}
+
+                local savedVarsGlobal = _G[addonInstance.savedVarsGlobalName]
+                local savedVarsPerChar = _G[addonInstance.savedVarsPerCharName]
+
+                addonInstance:Initialize(savedVarsGlobal, savedVarsPerChar)
+
+                _G[addonInstance.compartmentFuncName] = function()
+                    addonInstance:OpenSettings()
+                end
+
+                self:UnregisterEvent("ADDON_LOADED")
+            end
+        end)
+    end
+    return self.addons[addonName]
+end
+
+do -- Initialization
+
+    function addon:Initialize(savedVarsGlobal, savedVarsPerChar)
+        callHook(self, "BeforeInitialize", savedVarsGlobal, savedVarsPerChar)
+
+        self.config = self.config or {}
+        self.config.settings = self.config.settings or {}
+        self.sadCore = self.sadCore or {}
+        self.sadCore.version = SADCORE_MAJOR:match("%d+") .. "." .. SADCORE_MINOR
+        self.apiVersion = select(4, GetBuildInfo())
+
+        local clientLocale = GetLocale()
+        self.locale = self.locale or {}
+
+        for localeKey, prototypeLocale in pairs(SAdCore.prototype.locale) do
+            if not self.locale[localeKey] then
+                self.locale[localeKey] = prototypeLocale
+            else
+                local userLocale = self.locale[localeKey]
+                self.locale[localeKey] = {}
+                for key, value in pairs(prototypeLocale) do
+                    self.locale[localeKey][key] = value
+                end
+                for key, value in pairs(userLocale) do
+                    self.locale[localeKey][key] = value
+                end
+            end
+        end
+
+        self.localization = self.locale[clientLocale] or self.locale.enEN
+
+        self.config.ui = self.config.ui or {
+            spacing = {
+                panelTop = -25,
+                panelBottom = 20,
+                headerHeight = 60,
+                controlHeight = 38,
+                buttonHeight = 50,
+                descriptionPadding = 6,
+                contentLeft = 10,
+                contentRight = -10,
+                controlLeft = 30,
+                controlRight = -10,
+                textInset = 17
+            },
+            dialog = {
+                defaultWidth = 500,
+                titleHeight = 40,
+                buttonHeight = 50,
+                contentPadding = 20,
+                titleOffset = -15,
+                contentTop = -40,
+                contentBottom = 50,
+                buttonSize = {
+                    width = 100,
+                    height = 25
+                },
+                buttonOffset = 15,
+                initialYOffset = -10
+            },
+            dropdown = {
+                width = 150
+            },
+            slider = {
+                width = 205
+            },
+            backdrop = {
+                edgeSize = 2,
+                insets = {
+                    left = 2,
+                    right = 2,
+                    top = 2,
+                    bottom = 2
+                }
+            }
+        }
+
+        self.currentZone = self:GetCurrentZone()
+        self.previousZone = nil
+
+        local handleZoneChangeCallback = function(event, ...)
+            self:HandleZoneChange()
+        end
+
+        self:RegisterEvent("PLAYER_ENTERING_WORLD", handleZoneChangeCallback)
+        self:RegisterEvent("ZONE_CHANGED_NEW_AREA", handleZoneChangeCallback)
+        self:RegisterEvent("PVP_MATCH_ACTIVE", handleZoneChangeCallback)
+        self:RegisterEvent("ARENA_PREP_OPPONENT_SPECIALIZATIONS", handleZoneChangeCallback)
+        self:RegisterEvent("ARENA_OPPONENT_UPDATE", handleZoneChangeCallback)
+        self:RegisterEvent("PVP_MATCH_INACTIVE", handleZoneChangeCallback)
+        self:RegisterEvent("PLAYER_ROLES_ASSIGNED", handleZoneChangeCallback)
+
+        self.author = self.author or "SAdCore Framework"
+        self:InitializeSavedVariables(savedVarsGlobal, savedVarsPerChar)
+
+        self.CombatSafe = self.CombatSafe or {}
+
+        if self.LoadConfig then
+            self:LoadConfig()
+        end
+
+        self.LibSerialize = LibStub("LibSerialize")
+        self.LibCompress = LibStub("LibCompress")
+
+        self:CreateSlashCommand()
+        self:InitializeSettingsPanel()
+
+        if self.RegisterFunctions then
+            self:RegisterFunctions()
+        end
+
+        self:InitializeCombatQueue()
+        self:WrapCombatSafeFunctions()
+
+        local returnValue = true
+        callHook(self, "AfterInitialize", returnValue)
+
+        self.initialized = true
+
+        return returnValue
+    end
+
+    function addon:InitializeSavedVariables(savedVarsGlobal, savedVarsPerChar)
+        savedVarsGlobal, savedVarsPerChar = callHook(self, "BeforeInitializeSavedVariables", savedVarsGlobal,
+            savedVarsPerChar)
+
+        if savedVarsGlobal then
+            self.settingsGlobal = savedVarsGlobal
+            self.settingsGlobal.main = self.settingsGlobal.main or {}
+        else
+            self.settingsGlobal = {}
+            self.settingsGlobal.main = {}
+        end
+
+        if savedVarsPerChar then
+            self.settingsChar = savedVarsPerChar
+            self.settingsChar.main = self.settingsChar.main or {}
+        else
+            self.settingsChar = {}
+            self.settingsChar.main = {}
+        end
+
+        if self.savedVarsGlobalName then
+            _G[self.savedVarsGlobalName] = self.settingsGlobal
+        end
+        if self.savedVarsPerCharName then
+            _G[self.savedVarsPerCharName] = self.settingsChar
+        end
+
+        self.settings = (self.settingsChar.useCharacterSettings) and self.settingsChar or self.settingsGlobal
+
+        local returnValue = true
+        callHook(self, "AfterInitializeSavedVariables", returnValue)
+        return returnValue
+    end
+
+    function addon:Setup(savedVarsGlobal, savedVarsPerChar, compartmentFuncName)
+        local addonInstance = self
+        savedVarsGlobal, savedVarsPerChar, compartmentFuncName =
+            callHook(self, "BeforeSetup", savedVarsGlobal, savedVarsPerChar, compartmentFuncName)
+
+        self.setupConfig = {
+            savedVarsGlobal = savedVarsGlobal,
+            savedVarsPerChar = savedVarsPerChar,
+            compartmentFuncName = compartmentFuncName
+        }
+
+        if not self.setupEventFrame then
+            self.setupEventFrame = CreateFrame("Frame")
+            self.setupEventFrame:RegisterEvent("ADDON_LOADED")
+            self.setupEventFrame:SetScript("OnEvent", function(self, event, loadedAddon)
+                if loadedAddon == addonInstance.addonName then
+                    addonInstance:Initialize(addonInstance.setupConfig.savedVarsGlobal,
+                        addonInstance.setupConfig.savedVarsPerChar)
+
+                    if addonInstance.setupConfig.compartmentFuncName then
+                        _G[addonInstance.setupConfig.compartmentFuncName] = function()
+                            addonInstance:OpenSettings()
+                        end
+                    end
+
+                    self:UnregisterEvent("ADDON_LOADED")
+                    addonInstance.setupEventFrame = nil
+                end
+            end)
+        end
+
+        local returnValue = true
+        callHook(self, "AfterSetup", returnValue)
+        return returnValue
+    end
+end
+
+do -- Registration functions
+
+    function addon:RegisterEvent(eventName, callback)
+        local addonInstance = self
+        eventName, callback = callHook(self, "BeforeRegisterEvent", eventName, callback)
+
+        if self.eventFrame == nil then
+            self.eventFrame = CreateFrame("Frame", nil, UIParent)
+            self.eventCallbacks = {}
+            self.eventFrame:SetScript("OnEvent", function(self, event, ...)
+                local eventCallback = addonInstance.eventCallbacks[event]
+                if eventCallback then
+                    eventCallback(event, ...)
+                end
+            end)
+        end
+
+        self.eventFrame:RegisterEvent(eventName)
+        self.eventCallbacks[eventName] = callback
+
+        local returnValue = true
+        callHook(self, "AfterRegisterEvent", returnValue)
+        return returnValue
+    end
+
+    function addon:RegisterSlashCommand(command, callback)
+        command, callback = callHook(self, "BeforeRegisterSlashCommand", command, callback)
+
+        if not self.slashCommands then
+            self.slashCommands = {}
+        end
+
+        self.slashCommands[command:lower()] = callback
+
+        local returnValue = true
+        callHook(self, "AfterRegisterSlashCommand", returnValue)
+        return returnValue
+    end
+
+    function addon:CreateSlashCommand()
+        local addonInstance = self
+        callHook(self, "BeforeCreateSlashCommand")
+
+        self.slashCommands = {}
+
+        local slashCommandName = self.addonName:upper()
+        _G["SLASH_" .. slashCommandName .. "1"] = "/" .. self.addonName:lower()
+        SlashCmdList[slashCommandName] = function(message)
+            local command, rest = message:match("^(%S*)%s*(.-)$")
+            command = command and command:lower() or ""
+
+            if command ~= "" and addonInstance.slashCommands[command] then
+                local params = {}
+                if rest and rest ~= "" then
+                    for param in rest:gmatch("%S+") do
+                        table.insert(params, param)
+                    end
+                end
+                addonInstance.slashCommands[command](unpack(params))
+            else
+                addonInstance:OpenSettings()
+            end
+        end
+
+        local returnValue = true
+        callHook(self, "AfterCreateSlashCommand", returnValue)
+        return returnValue
+    end
+end
+
+do -- Zone Management
+
+    addon.zones = {"arena", "battleground", "dungeon", "raid", "world"}
+
+    function addon:GetCurrentZone()
+        callHook(self, "BeforeGetCurrentZone")
+
+        local zoneName = "world"
+        local instanceName, instanceType = GetInstanceInfo()
+
+        if instanceType == "arena" then
+            zoneName = "arena"
+        elseif instanceType == "pvp" then
+            zoneName = "battleground"
+        elseif instanceType == "party" then
+            zoneName = "dungeon"
+        elseif instanceType == "raid" then
+            zoneName = "raid"
+        else
+            zoneName = "world"
+        end
+
+        local returnValue = zoneName
+        callHook(self, "AfterGetCurrentZone", returnValue)
+        return returnValue
+    end
+
+    function addon:HandleZoneChange()
+        callHook(self, "BeforeHandleZoneChange")
+
+        if not self.initialized then
+            local returnValue = false
+            callHook(self, "AfterHandleZoneChange", returnValue)
+            return returnValue
+        end
+
+        local currentZone = self:GetCurrentZone()
+
+        if currentZone == self.previousZone and self.previousZone ~= nil then
+            local returnValue = false
+            callHook(self, "AfterHandleZoneChange", returnValue)
+            return returnValue
+        end
+
+        self.previousZone = self.currentZone
+        self.currentZone = currentZone
+
+        callHook(self, "OnZoneChange", self, currentZone)
+
+        local returnValue = true
+        callHook(self, "AfterHandleZoneChange", returnValue, self.currentZone)
+        return returnValue
+    end
+end
+
+do -- Settings Panels
+
+    function addon:ConfigureMainSettings()
+        callHook(self, "BeforeConfigureMainSettings")
+
+        local headerControls = {}
+        local footerControls = {{
+            type = "header",
+            name = "core_debuggingHeader"
+        }, {
+            type = "checkbox",
+            name = "core_enableDebugging",
+            default = false
+        }, {
+            type = "header",
+            name = "core_profile"
+        }, {
+            type = "checkbox",
+            name = "core_useCharacterSettings",
+            default = false,
+            onValueChange = function(addonInstance, value)
+                addonInstance:debug("useCharacterSettings onValueChange called with value: " .. tostring(value) ..
+                                        " (type: " .. type(value) .. ")")
+                addonInstance:UpdateActiveSettings(value)
+            end,
+            skipRefresh = true
+        }, {
+            type = "inputBox",
+            name = "core_loadSettings",
+            buttonText = "core_loadSettingsButton",
+            sessionOnly = true,
+            onClick = function(addonInstance, inputText, editBox)
+                addonInstance:ImportSettings(inputText)
+                editBox:SetText("")
+            end
+        }, {
+            type = "button",
+            name = "core_shareSettings",
+            onClick = function()
+                self:ExportSettings()
+            end
+        }, {
+            type = "divider"
+        }, {
+            type = "description",
+            name = "core_tagline"
+        }, {
+            type = "description",
+            name = "author",
+            onClick = function()
+                self:ShowDialog({
+                    title = "core_authorTitle",
+                    controls = {{
+                        type = "inputBox",
+                        name = "core_authorName",
+                        default = self.author,
+                        highlightText = true
+                    }}
+                })
+            end
+        }}
+
+        local main = {}
+        main.title = (self.config.settings.main and self.config.settings.main.title) or self.addonName
+        main.controls = {}
+
+        for _, control in ipairs(headerControls) do
+            table.insert(main.controls, control)
+        end
+
+        if self.config.settings.main and self.config.settings.main.controls then
+            for _, control in ipairs(self.config.settings.main.controls) do
+                table.insert(main.controls, control)
+            end
+        end
+
+        for _, control in ipairs(footerControls) do
+            table.insert(main.controls, control)
+        end
+
+        self.config.settings.main = main
+
+        local returnValue = true
+        callHook(self, "AfterConfigureMainSettings", returnValue)
+        return returnValue
+    end
+
+    function addon:InitializeDefaultSettings()
+        callHook(self, "BeforeInitializeDefaultSettings")
+
+        if not self.config.settings then
+            callHook(self, "AfterInitializeDefaultSettings", false)
+            return false
+        end
+
+        for panelKey, panelConfig in pairs(self.config.settings) do
+            self.settings[panelKey] = self.settings[panelKey] or {}
+            
+            if panelConfig.controls then
+                for _, controlConfig in ipairs(panelConfig.controls) do
+                    local controlName = controlConfig.name
+                    local controlDefault = controlConfig.default
+                    
+                    if controlName and controlDefault ~= nil and self.settings[panelKey][controlName] == nil then
+                        self.settings[panelKey][controlName] = controlDefault
+                    end
+                end
+            end
+        end
+
+        local returnValue = true
+        callHook(self, "AfterInitializeDefaultSettings", returnValue)
+        return returnValue
+    end
+
+    function addon:InitializeSettingsPanel()
+        callHook(self, "BeforeInitializeSettingsPanel")
+
+        if self.ConfigureMainSettings then
+            self:ConfigureMainSettings()
+        end
+
+        -- Pre-initialize all settings with their default values
+        self:InitializeDefaultSettings()
+
+        self.settingsPanels = {}
+        self.mainSettingsPanel = self:BuildMainSettingsPanel()
+        self.settingsCategory = Settings.RegisterCanvasLayoutCategory(self.mainSettingsPanel, self.addonName)
+        Settings.RegisterAddOnCategory(self.settingsCategory)
+        self.settingsPanels["main"] = self.mainSettingsPanel
+
+        local sortedPanelKeys = {}
+        for panelKey in pairs(self.config.settings) do
+            if panelKey ~= "main" then
+                table.insert(sortedPanelKeys, panelKey)
+            end
+        end
+        table.sort(sortedPanelKeys)
+
+        for _, panelKey in ipairs(sortedPanelKeys) do
+            local panelConfig = self.config.settings[panelKey]
+            local childPanel = self:BuildChildSettingsPanel(panelKey)
+            if childPanel then
+                local categoryName = self:L(panelConfig.title or panelKey)
+                Settings.RegisterCanvasLayoutSubcategory(self.settingsCategory, childPanel, categoryName)
+                self.settingsPanels[panelKey] = childPanel
+            end
+        end
+
+        local returnValue = true
+        callHook(self, "AfterInitializeSettingsPanel", returnValue)
+        return returnValue
+    end
+
+    function addon:BuildSettingsPanelHelper(panelKey, config)
+        panelKey, config = callHook(self, "BeforeBuildSettingsPanelHelper", panelKey, config)
+
+        if not config then
+            callHook(self, "AfterBuildSettingsPanelHelper", false)
+            return false
+        end
+
+        local panel = self:CreateSettingsPanel(panelKey)
+        local titleText = panelKey == "main" and self.addonName or self:L(config.title)
+        panel.Title:SetText(titleText)
+        panel.controlRefreshers = {}
+
+        local content = panel.ScrollFrame.Content
+        local yOffset = self.config.ui.spacing.panelTop
+
+        if config.controls then
+            for _, controlConfig in ipairs(config.controls) do
+                local control, newYOffset = self:AddControl(content, yOffset, panelKey, controlConfig)
+                if control and control.refresh then
+                    table.insert(panel.controlRefreshers, control.refresh)
+                end
+                yOffset = newYOffset
+            end
+        end
+
+        content:SetHeight(math.abs(yOffset) + self.config.ui.spacing.panelBottom)
+
+        callHook(self, "AfterBuildSettingsPanelHelper", panel)
+        return panel
+    end
+
+    function addon:BuildMainSettingsPanel()
+        callHook(self, "BeforeBuildMainSettingsPanel")
+
+        local panel = self:BuildSettingsPanelHelper("main", self.config.settings.main)
+
+        callHook(self, "AfterBuildMainSettingsPanel", panel)
+        return panel
+    end
+
+    function addon:BuildChildSettingsPanel(panelKey)
+        panelKey = callHook(self, "BeforeBuildChildSettingsPanel", panelKey)
+
+        local panel = self:BuildSettingsPanelHelper(panelKey, self.config.settings[panelKey])
+
+        callHook(self, "AfterBuildChildSettingsPanel", panel)
+        return panel
+    end
+
+    function addon:CreateSettingsPanel(panelKey)
+        panelKey = callHook(self, "BeforeCreateSettingsPanel", panelKey)
+
+        local panel = CreateFrame("Frame", self.addonName .. "_" .. panelKey .. "_Panel")
+        panel.panelKey = panelKey
+
+        panel.Title = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightHuge")
+        panel.Title:SetPoint("TOPLEFT", 7, -22)
+        panel.Title:SetJustifyH("LEFT")
+        panel.Title:SetTextColor(1, 1, 1)
+
+        panel.HorizontalLine = panel:CreateTexture(nil, "ARTWORK")
+        panel.HorizontalLine:SetSize(0, 1)
+        panel.HorizontalLine:SetPoint("TOPLEFT", panel.Title, "BOTTOMLEFT", 0, -8)
+        panel.HorizontalLine:SetPoint("TOPRIGHT", -30, -63)
+        panel.HorizontalLine:SetColorTexture(0.25, 0.25, 0.25, 1)
+
+        panel.ScrollFrame = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+        panel.ScrollFrame:SetPoint("TOPLEFT", 0, -28)
+        panel.ScrollFrame:SetPoint("BOTTOMRIGHT", -30, 10)
+
+        panel.ScrollFrame.Content = CreateFrame("Frame", nil, panel.ScrollFrame)
+        panel.ScrollFrame.Content:SetSize(600, 1)
+        panel.ScrollFrame:SetScrollChild(panel.ScrollFrame.Content)
+
+        panel:SetScript("OnShow", function(self)
+            if self.controlRefreshers then
+                for _, refreshFunc in ipairs(self.controlRefreshers) do
+                    refreshFunc()
+                end
+            end
+        end)
+
+        callHook(self, "AfterCreateSettingsPanel", panel)
+        return panel
+    end
+end
+
+do -- Controls
+
+    function addon:AddHeader(parent, yOffset, panelKey, name)
+        parent, yOffset, panelKey, name = callHook(self, "BeforeAddHeader", parent, yOffset, panelKey, name)
+
+        local header = CreateFrame("Frame", nil, parent)
+        header:SetHeight(50)
+        header:SetPoint("TOPLEFT", self.config.ui.spacing.contentLeft, yOffset)
+        header:SetPoint("TOPRIGHT", self.config.ui.spacing.contentRight, yOffset)
+
+        header.Title = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+        header.Title:SetPoint("BOTTOMLEFT", 7, 4)
+        header.Title:SetJustifyH("LEFT")
+        header.Title:SetJustifyV("BOTTOM")
+        header.Title:SetText(self:L(name))
+
+        local newYOffset = yOffset - self.config.ui.spacing.headerHeight
+        callHook(self, "AfterAddHeader", header, newYOffset)
+        return header, newYOffset
+    end
+
+    function addon:AddCheckbox(parent, yOffset, panelKey, name, defaultValue, onValueChange, skipRefresh, sessionOnly)
+        local addonInstance = self
+        parent, yOffset, panelKey, name, defaultValue, onValueChange, skipRefresh, sessionOnly = callHook(self,
+            "BeforeAddCheckbox", parent, yOffset, panelKey, name, defaultValue, onValueChange, skipRefresh, sessionOnly)
+
+        local getValue, setValue
+
+        if sessionOnly == true then
+            local tempValue = defaultValue
+            getValue = function()
+                return tempValue
+            end
+            setValue = function(value)
+                tempValue = value
+                if onValueChange then
+                    onValueChange(addonInstance, value)
+                end
+            end
+        elseif name == "core_useCharacterSettings" then
+            getValue = function()
+                return self.settingsChar.useCharacterSettings
+            end
+            setValue = function(value)
+                self.settingsChar.useCharacterSettings = value
+                if onValueChange then
+                    onValueChange(addonInstance, value)
+                end
+            end
+            if getValue() == nil then
+                self.settingsChar.useCharacterSettings = defaultValue
+            end
+        else
+            self.settings[panelKey] = self.settings[panelKey] or {}
+            if self.settings[panelKey][name] == nil then
+                self.settings[panelKey][name] = defaultValue
+            end
+
+            getValue = function()
+                self.settings[panelKey] = self.settings[panelKey] or {}
+                return self.settings[panelKey][name]
+            end
+
+            setValue = function(value)
+                self.settings[panelKey] = self.settings[panelKey] or {}
+                self.settings[panelKey][name] = value
+                if onValueChange then
+                    onValueChange(addonInstance, value)
+                end
+            end
+        end
+
+        local checkbox = CreateFrame("Frame", nil, parent)
+        checkbox:SetHeight(32)
+        checkbox:SetPoint("TOPLEFT", self.config.ui.spacing.controlLeft, yOffset)
+        checkbox:SetPoint("TOPRIGHT", self.config.ui.spacing.controlRight, yOffset)
+
+        checkbox.Text = checkbox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        checkbox.Text:SetSize(205, 0)
+        checkbox.Text:SetPoint("LEFT", 17, 0)
+        checkbox.Text:SetJustifyH("LEFT")
+        checkbox.Text:SetWordWrap(false)
+        checkbox.Text:SetText(self:L(name))
+
+        checkbox.CheckBox = CreateFrame("CheckButton", nil, checkbox)
+        checkbox.CheckBox:SetSize(26, 26)
+        checkbox.CheckBox:SetPoint("LEFT", 215, 0)
+        checkbox.CheckBox:SetMotionScriptsWhileDisabled(true)
+        checkbox.CheckBox:SetNormalAtlas("checkbox-minimal")
+        checkbox.CheckBox:SetPushedAtlas("checkbox-minimal")
+        checkbox.CheckBox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+        checkbox.CheckBox:GetCheckedTexture():SetAtlas("checkmark-minimal")
+        checkbox.CheckBox:SetDisabledCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check-Disabled")
+        checkbox.CheckBox:GetDisabledCheckedTexture():SetAtlas("checkmark-minimal-disabled")
+
+        local currentValue = getValue()
+        if currentValue == nil then
+            currentValue = defaultValue
+        end
+        checkbox.CheckBox:SetChecked(currentValue)
+
+        if onValueChange then
+            onValueChange(addonInstance, currentValue)
+        end
+
+        checkbox.CheckBox:SetScript("OnClick", function(checkboxFrame)
+            setValue(checkboxFrame:GetChecked())
+        end)
+
+        if not skipRefresh then
+            checkbox.refresh = function()
+                local value = getValue()
+                if value == nil then
+                    value = defaultValue
+                end
+                checkbox.CheckBox:SetChecked(value)
+            end
+        end
+
+        local tooltipKey = name .. "Tooltip"
+        local tooltipText = addonInstance:L(tooltipKey)
+        if tooltipText ~= "[" .. tooltipKey .. "]" then
+            checkbox.CheckBox:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(addonInstance:L(name), 1, 1, 1)
+                GameTooltip:AddLine(tooltipText, nil, nil, nil, true)
+                GameTooltip:Show()
+            end)
+            checkbox.CheckBox:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+            end)
+        end
+
+        local newYOffset = yOffset - self.config.ui.spacing.controlHeight
+        callHook(self, "AfterAddCheckbox", checkbox, newYOffset)
+        return checkbox, newYOffset
+    end
+
+    function addon:AddDropdown(parent, yOffset, panelKey, name, defaultValue, options, onValueChange, skipRefresh,
+        sessionOnly)
+        local addonInstance = self
+        parent, yOffset, panelKey, name, defaultValue, options, onValueChange, skipRefresh, sessionOnly = callHook(self,
+            "BeforeAddDropdown", parent, yOffset, panelKey, name, defaultValue, options, onValueChange, skipRefresh,
+            sessionOnly)
+
+        local currentValue = defaultValue
+
+        if sessionOnly ~= true then
+            self.settings[panelKey] = self.settings[panelKey] or {}
+            if self.settings[panelKey][name] == nil then
+                self.settings[panelKey][name] = defaultValue
+            end
+            currentValue = self.settings[panelKey][name]
+        end
+
+        local dropdown = CreateFrame("Frame", nil, parent)
+        dropdown:SetHeight(32)
+        dropdown:SetPoint("TOPLEFT", self.config.ui.spacing.controlLeft, yOffset)
+        dropdown:SetPoint("TOPRIGHT", self.config.ui.spacing.controlRight, yOffset)
+
+        dropdown.Text = dropdown:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        dropdown.Text:SetSize(205, 0)
+        dropdown.Text:SetPoint("LEFT", 17, 0)
+        dropdown.Text:SetJustifyH("LEFT")
+        dropdown.Text:SetWordWrap(false)
+        dropdown.Text:SetText(self:L(name))
+
+        dropdown.Dropdown = CreateFrame("Frame", nil, dropdown, "UIDropDownMenuTemplate")
+        dropdown.Dropdown:SetPoint("LEFT", 200, 3)
+        UIDropDownMenu_SetWidth(dropdown.Dropdown, self.config.ui.dropdown.width)
+
+        local initializeFunc = function(dropdownFrame, level)
+            local savedValue = (sessionOnly ~= true) and addonInstance.settings[panelKey][name] or currentValue
+            for _, option in ipairs(options) do
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = addonInstance:L(option.label)
+                info.value = option.value
+                info.func = function(self)
+                    if sessionOnly ~= true then
+                        addonInstance.settings[panelKey][name] = self.value
+                    else
+                        currentValue = self.value
+                    end
+                    UIDropDownMenu_SetSelectedValue(dropdown.Dropdown, self.value)
+                    UIDropDownMenu_Initialize(dropdown.Dropdown, initializeFunc)
+                    if onValueChange then
+                        onValueChange(addonInstance, self.value)
+                    end
+                end
+                info.checked = (savedValue == option.value)
+                UIDropDownMenu_AddButton(info, level)
+            end
+        end
+
+        UIDropDownMenu_Initialize(dropdown.Dropdown, initializeFunc)
+        UIDropDownMenu_SetSelectedValue(dropdown.Dropdown, currentValue or defaultValue)
+
+        if onValueChange then
+            onValueChange(addonInstance, currentValue or defaultValue)
+        end
+
+        if not skipRefresh and sessionOnly ~= true then
+            dropdown.refresh = function()
+                addonInstance.settings[panelKey] = addonInstance.settings[panelKey] or {}
+                local value = addonInstance.settings[panelKey][name]
+                if value == nil then
+                    value = defaultValue
+                end
+                UIDropDownMenu_SetSelectedValue(dropdown.Dropdown, value)
+            end
+        end
+
+        local newYOffset = yOffset - self.config.ui.spacing.controlHeight
+        callHook(self, "AfterAddDropdown", dropdown, newYOffset)
+        return dropdown, newYOffset
+    end
+
+    function addon:AddSlider(parent, yOffset, panelKey, name, defaultValue, minValue, maxValue, step, onValueChange,
+        skipRefresh, sessionOnly)
+        local addonInstance = self
+        parent, yOffset, panelKey, name, defaultValue, minValue, maxValue, step, onValueChange, skipRefresh, sessionOnly =
+            callHook(self, "BeforeAddSlider", parent, yOffset, panelKey, name, defaultValue, minValue, maxValue, step,
+                onValueChange, skipRefresh, sessionOnly)
+
+        local currentValue = defaultValue
+
+        if sessionOnly ~= true then
+            self.settings[panelKey] = self.settings[panelKey] or {}
+            if self.settings[panelKey][name] == nil then
+                self.settings[panelKey][name] = defaultValue
+            end
+            currentValue = self.settings[panelKey][name]
+        end
+
+        local slider = CreateFrame("Frame", nil, parent)
+        slider:SetHeight(32)
+        slider:SetPoint("TOPLEFT", self.config.ui.spacing.controlLeft, yOffset)
+        slider:SetPoint("TOPRIGHT", self.config.ui.spacing.controlRight, yOffset)
+
+        slider.Text = slider:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        slider.Text:SetSize(205, 0)
+        slider.Text:SetPoint("LEFT", 17, 0)
+        slider.Text:SetJustifyH("LEFT")
+        slider.Text:SetWordWrap(false)
+        slider.Text:SetText(self:L(name))
+
+        slider.Value = slider:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        slider.Value:SetPoint("LEFT", 430, 0)
+        slider.Value:SetJustifyH("LEFT")
+
+        slider.Slider = CreateFrame("Slider", nil, slider, "MinimalSliderWithSteppersTemplate")
+        slider.Slider:SetSize(205, 22)
+        slider.Slider:SetPoint("LEFT", 215, 0)
+
+        local steps = (maxValue - minValue) / step
+        slider.Slider:Init(currentValue or defaultValue, minValue, maxValue, steps)
+        slider.Slider:SetWidth(self.config.ui.slider.width)
+
+        local function updateValue(value)
+            if value == 0 then
+                value = 0
+            end
+            slider.Value:SetText(string.format("%.0f", value))
+        end
+        updateValue(currentValue or defaultValue)
+
+        if onValueChange then
+            onValueChange(addonInstance, currentValue or defaultValue)
+        end
+
+        slider.Slider:RegisterCallback(MinimalSliderWithSteppersMixin.Event.OnValueChanged, function(_, value)
+            if sessionOnly ~= true then
+                addonInstance.settings[panelKey][name] = value
+            else
+                currentValue = value
+            end
+            updateValue(value)
+            if onValueChange then
+                onValueChange(addonInstance, value)
+            end
+        end)
+
+        if not skipRefresh and sessionOnly ~= true then
+            slider.refresh = function()
+                addonInstance.settings[panelKey] = addonInstance.settings[panelKey] or {}
+                local value = addonInstance.settings[panelKey][name]
+                if value == nil then
+                    value = defaultValue
+                end
+                slider.Slider:SetValue(value)
+                updateValue(value)
+            end
+        end
+
+        local tooltipKey = name .. "Tooltip"
+        local tooltipText = addonInstance:L(tooltipKey)
+        if tooltipText ~= "[" .. tooltipKey .. "]" then
+            slider.Slider:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(addonInstance:L(name), 1, 1, 1)
+                GameTooltip:AddLine(tooltipText, nil, nil, nil, true)
+                GameTooltip:Show()
+            end)
+            slider.Slider:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+            end)
+        end
+
+        local newYOffset = yOffset - self.config.ui.spacing.controlHeight
+        callHook(self, "AfterAddSlider", slider, newYOffset)
+        return slider, newYOffset
+    end
+
+    function addon:AddButton(parent, yOffset, panelKey, name, onClick)
+        local addonInstance = self
+        parent, yOffset, panelKey, name, onClick = callHook(self, "BeforeAddButton", parent, yOffset, panelKey, name,
+            onClick)
+
+        local button = CreateFrame("Frame", nil, parent)
+        button:SetHeight(40)
+        button:SetPoint("TOPLEFT", self.config.ui.spacing.contentLeft, yOffset)
+        button:SetPoint("TOPRIGHT", self.config.ui.spacing.contentRight, yOffset)
+
+        button.Button = CreateFrame("Button", nil, button, "UIPanelButtonTemplate")
+        button.Button:SetSize(120, 22)
+        button.Button:SetPoint("LEFT", 35, 0)
+        button.Button:SetText(self:L(name))
+
+        button.Button:SetScript("OnClick", function(self)
+            if onClick then
+                onClick(addonInstance)
+            end
+        end)
+
+        local tooltipKey = name .. "Tooltip"
+        local tooltipText = addonInstance:L(tooltipKey)
+        if tooltipText ~= "[" .. tooltipKey .. "]" then
+            button.Button:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(addonInstance:L(name), 1, 1, 1)
+                GameTooltip:AddLine(tooltipText, nil, nil, nil, true)
+                GameTooltip:Show()
+            end)
+            button.Button:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+            end)
+        end
+
+        local newYOffset = yOffset - self.config.ui.spacing.buttonHeight
+        callHook(self, "AfterAddButton", button, newYOffset)
+        return button, newYOffset
+    end
+
+    function addon:AddColorPicker(parent, yOffset, panelKey, name, defaultValue, onValueChange, skipRefresh, sessionOnly)
+        local addonInstance = self
+        parent, yOffset, panelKey, name, defaultValue, onValueChange, skipRefresh, sessionOnly = callHook(self,
+            "BeforeAddColorPicker", parent, yOffset, panelKey, name, defaultValue, onValueChange, skipRefresh,
+            sessionOnly)
+
+        local currentValue = defaultValue
+
+        if sessionOnly ~= true then
+            self.settings[panelKey] = self.settings[panelKey] or {}
+            if self.settings[panelKey][name] == nil then
+                self.settings[panelKey][name] = defaultValue
+            end
+            currentValue = self.settings[panelKey][name]
+        end
+
+        local colorPicker = CreateFrame("Frame", nil, parent)
+        colorPicker:SetHeight(32)
+        colorPicker:SetPoint("TOPLEFT", self.config.ui.spacing.controlLeft, yOffset)
+        colorPicker:SetPoint("TOPRIGHT", self.config.ui.spacing.controlRight, yOffset)
+
+        colorPicker.Text = colorPicker:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        colorPicker.Text:SetSize(205, 0)
+        colorPicker.Text:SetPoint("LEFT", 17, 0)
+        colorPicker.Text:SetJustifyH("LEFT")
+        colorPicker.Text:SetWordWrap(false)
+        colorPicker.Text:SetText(self:L(name))
+
+        colorPicker.ColorSwatch = CreateFrame("Button", nil, colorPicker)
+        colorPicker.ColorSwatch:SetSize(26, 26)
+        colorPicker.ColorSwatch:SetPoint("LEFT", 215, 0)
+
+        colorPicker.ColorSwatch.Background = colorPicker.ColorSwatch:CreateTexture(nil, "BACKGROUND")
+        colorPicker.ColorSwatch.Background:SetColorTexture(1, 1, 1, 1)
+        colorPicker.ColorSwatch.Background:SetAllPoints()
+
+        colorPicker.ColorSwatch.Color = colorPicker.ColorSwatch:CreateTexture(nil, "ARTWORK")
+        local hexValue = currentValue or defaultValue
+        local r, g, b, a = self:hexToRGB(hexValue)
+        colorPicker.ColorSwatch.Color:SetColorTexture(r, g, b, a)
+        colorPicker.ColorSwatch.Color:SetPoint("TOPLEFT", 2, -2)
+        colorPicker.ColorSwatch.Color:SetPoint("BOTTOMRIGHT", -2, 2)
+
+        colorPicker.ColorSwatch.Border = colorPicker.ColorSwatch:CreateTexture(nil, "BORDER")
+        colorPicker.ColorSwatch.Border:SetColorTexture(0, 0, 0, 1)
+        colorPicker.ColorSwatch.Border:SetAllPoints()
+        colorPicker.ColorSwatch.Border:SetDrawLayer("BORDER", 0)
+
+        local function updateColor(hexColor)
+            local r, g, b, a = self:hexToRGB(hexColor)
+            colorPicker.ColorSwatch.Color:SetColorTexture(r, g, b, a)
+            if sessionOnly ~= true then
+                self.settings[panelKey][name] = hexColor
+            else
+                currentValue = hexColor
+            end
+            if onValueChange then
+                onValueChange(addonInstance, hexColor)
+            end
+        end
+
+        if onValueChange then
+            onValueChange(addonInstance, currentValue or defaultValue)
+        end
+
+        colorPicker.ColorSwatch:SetScript("OnClick", function(self)
+            local r, g, b, a = addonInstance:hexToRGB((sessionOnly ~= true) and addonInstance.settings[panelKey][name] or
+                                                          currentValue or defaultValue)
+
+            ColorPickerFrame:SetupColorPickerAndShow({
+                swatchFunc = function()
+                    local newR, newG, newB = ColorPickerFrame:GetColorRGB()
+                    local newA = ColorPickerFrame:GetColorAlpha()
+                    local hexColor = addonInstance:rgbToHex(newR, newG, newB, newA)
+                    updateColor(hexColor)
+                end,
+                cancelFunc = function()
+                    updateColor(addonInstance:rgbToHex(r, g, b, a))
+                end,
+                opacityFunc = function()
+                    local newR, newG, newB = ColorPickerFrame:GetColorRGB()
+                    local newA = ColorPickerFrame:GetColorAlpha()
+                    local hexColor = addonInstance:rgbToHex(newR, newG, newB, newA)
+                    updateColor(hexColor)
+                end,
+                r = r,
+                g = g,
+                b = b,
+                opacity = a,
+                hasOpacity = true
+            })
+        end)
+
+        if not skipRefresh and sessionOnly ~= true then
+            colorPicker.refresh = function()
+                self.settings[panelKey] = self.settings[panelKey] or {}
+                local value = self.settings[panelKey][name]
+                if value == nil then
+                    value = defaultValue
+                end
+                print("[ColorPicker REFRESH] panelKey=" .. tostring(panelKey) .. ", name=" .. tostring(name) .. ", hex=" .. tostring(value))
+                local r, g, b, a = self:hexToRGB(value)
+                print("[ColorPicker REFRESH] RGBA: r=" .. tostring(r) .. ", g=" .. tostring(g) .. ", b=" .. tostring(b) .. ", a=" .. tostring(a))
+                colorPicker.ColorSwatch.Color:SetColorTexture(r, g, b, a)
+            end
+        end
+
+        local tooltipKey = name .. "Tooltip"
+        local tooltipText = self:L(tooltipKey)
+        if tooltipText ~= "[" .. tooltipKey .. "]" then
+            colorPicker.ColorSwatch:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(self:L(name), 1, 1, 1)
+                GameTooltip:AddLine(tooltipText, nil, nil, nil, true)
+                GameTooltip:Show()
+            end)
+            colorPicker.ColorSwatch:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+            end)
+        end
+
+        local newYOffset = yOffset - self.config.ui.spacing.controlHeight
+        callHook(self, "AfterAddColorPicker", colorPicker, newYOffset)
+        return colorPicker, newYOffset
+    end
+
+    function addon:AddDescription(parent, yOffset, panelKey, name, onClick)
+        local addonInstance = self
+        parent, yOffset, panelKey, name, onClick = callHook(self, "BeforeAddDescription", parent, yOffset, panelKey,
+            name, onClick)
+
+        local frame = CreateFrame("Frame", nil, parent)
+        frame:SetPoint("TOPLEFT", self.config.ui.spacing.controlLeft, yOffset)
+        frame:SetPoint("TOPRIGHT", self.config.ui.spacing.controlRight, yOffset)
+        frame:SetHeight(32)
+
+        local fontString = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        fontString:SetPoint("LEFT", self.config.ui.spacing.textInset, 0)
+        fontString:SetPoint("RIGHT", -self.config.ui.spacing.textInset, 0)
+        fontString:SetJustifyH("LEFT")
+        fontString:SetJustifyV("TOP")
+        fontString:SetWordWrap(true)
+        fontString:SetText(self:L(name))
+        fontString:SetTextColor(1, 1, 1, 1)
+
+        local stringHeight = fontString:GetStringHeight()
+        frame:SetHeight(math.max(32, stringHeight))
+
+        if onClick then
+            frame:EnableMouse(true)
+            frame:SetScript("OnMouseDown", function(self)
+                onClick(addonInstance)
+            end)
+            frame:SetScript("OnEnter", function(self)
+                fontString:SetTextColor(1, 0.82, 0, 1)
+            end)
+            frame:SetScript("OnLeave", function(self)
+                fontString:SetTextColor(1, 1, 1, 1)
+            end)
+        end
+
+        local newYOffset = yOffset - math.max(32, stringHeight) - self.config.ui.spacing.descriptionPadding
+        callHook(self, "AfterAddDescription", frame, newYOffset)
+        return frame, newYOffset
+    end
+
+    function addon:AddDivider(parent, yOffset, panelKey)
+        parent, yOffset, panelKey = callHook(self, "BeforeAddDivider", parent, yOffset, panelKey)
+
+        paddingTop = 0
+        paddingBottom = 20
+        local totalHeight = paddingTop + paddingBottom
+
+        local frame = CreateFrame("Frame", nil, parent)
+        frame:SetHeight(totalHeight)
+        frame:SetPoint("TOPLEFT", self.config.ui.spacing.controlLeft, yOffset)
+        frame:SetPoint("TOPRIGHT", self.config.ui.spacing.controlRight, yOffset)
+
+        frame.Line = frame:CreateTexture(nil, "ARTWORK")
+        frame.Line:SetHeight(1)
+        frame.Line:SetPoint("LEFT", 10, -paddingTop)
+        frame.Line:SetPoint("RIGHT", -10, -paddingTop)
+        frame.Line:SetColorTexture(0, 0, 0, 0.25)
+
+        local newYOffset = yOffset - totalHeight
+        callHook(self, "AfterAddDivider", frame, newYOffset)
+        return frame, newYOffset
+    end
+
+    function addon:AddInputBox(parent, yOffset, panelKey, name, default, highlightText, buttonText, onClick,
+        onValueChange, sessionOnly)
+        local addonInstance = self
+        parent, yOffset, panelKey, name, default, highlightText, buttonText, onClick, onValueChange, sessionOnly =
+            callHook(self, "BeforeAddInputBox", parent, yOffset, panelKey, name, default, highlightText, buttonText,
+                onClick, onValueChange, sessionOnly)
+
+        local control = CreateFrame("Frame", nil, parent)
+        control:SetHeight(32)
+        control:SetPoint("TOPLEFT", self.config.ui.spacing.controlLeft, yOffset)
+        control:SetPoint("TOPRIGHT", self.config.ui.spacing.controlRight, yOffset)
+
+        control.Text = control:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        control.Text:SetSize(205, 0)
+        control.Text:SetPoint("LEFT", 17, 0)
+        control.Text:SetJustifyH("LEFT")
+        control.Text:SetWordWrap(false)
+        control.Text:SetText(self:L(name))
+
+        control.EditBox = CreateFrame("EditBox", nil, control)
+        control.EditBox:SetSize(220, 22)
+        control.EditBox:SetPoint("LEFT", 218, 0)
+        control.EditBox:SetAutoFocus(false)
+        control.EditBox:SetFontObject("ChatFontNormal")
+
+        control.EditBox.Background = control.EditBox:CreateTexture(nil, "BACKGROUND")
+        control.EditBox.Background:SetAllPoints(control.EditBox)
+        control.EditBox.Background:SetColorTexture(0, 0, 0, 0.5)
+
+        control.Button = CreateFrame("Button", nil, control, "UIPanelButtonTemplate")
+        control.Button:SetSize(60, 22)
+        control.Button:SetPoint("LEFT", control.EditBox, "RIGHT", 8, 0)
+
+        local shouldPersist = sessionOnly ~= true
+
+        if shouldPersist then
+            self.settings[panelKey] = self.settings[panelKey] or {}
+            if self.settings[panelKey][name] == nil then
+                self.settings[panelKey][name] = default
+            end
+
+            control.EditBox:SetScript("OnTextChanged", function(self, userInput)
+                if userInput then
+                    local newValue = self:GetText()
+                    addonInstance.settings[panelKey][name] = newValue
+                    if onValueChange then
+                        onValueChange(addonInstance, newValue)
+                    end
+                end
+            end)
+        else
+            control.EditBox:SetScript("OnTextChanged", function(self, userInput)
+                if userInput then
+                    local newValue = self:GetText()
+                    if onValueChange then
+                        onValueChange(addonInstance, newValue)
+                    end
+                end
+            end)
+        end
+
+        if buttonText then
+            control.Button:SetText(buttonText)
+
+            if onClick then
+                control.Button:SetScript("OnClick", function(self)
+                    local inputText = control.EditBox:GetText()
+                    onClick(addonInstance, inputText, control.EditBox)
+                end)
+            end
+
+            local tooltipKey = name .. "Tooltip"
+            local tooltipText = addonInstance:L(tooltipKey)
+            if tooltipText ~= "[" .. tooltipKey .. "]" then
+                control.Button:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(buttonText, 1, 1, 1)
+                    GameTooltip:AddLine(tooltipText, nil, nil, nil, true)
+                    GameTooltip:Show()
+                end)
+                control.Button:SetScript("OnLeave", function(self)
+                    GameTooltip:Hide()
+                end)
+            end
+        else
+            control.Button:Hide()
+        end
+
+        control.EditBox.Background:SetAllPoints(control.EditBox)
+        control.EditBox:SetFontObject(GameFontHighlight)
+        control.EditBox:SetTextColor(1, 1, 1, 1)
+        control.EditBox:SetTextInsets(5, 5, 0, 0)
+        control.EditBox:SetMultiLine(false)
+        control.EditBox:SetAutoFocus(false)
+        control.EditBox:Show()
+        control.EditBox:SetScript("OnEscapePressed", function(self)
+            self:ClearFocus()
+        end)
+        control.EditBox:SetScript("OnEnterPressed", function(self)
+            self:ClearFocus()
+        end)
+
+        control.EditBox:SetScript("OnShow", function(self)
+            if shouldPersist then
+                local savedValue = addonInstance.settings[panelKey][name]
+                if savedValue and self:GetText() == "" then
+                    self:SetText(savedValue)
+                    self:SetCursorPosition(0)
+                end
+            end
+            if highlightText then
+                self:HighlightText()
+            end
+        end)
+
+        if shouldPersist then
+            local initialValue = self.settings[panelKey][name] or default
+            if initialValue then
+                control.EditBox:SetText(initialValue)
+                control.EditBox:SetCursorPosition(0)
+            end
+
+            if onValueChange then
+                onValueChange(addonInstance, initialValue)
+            end
+
+            control.refresh = function()
+                local value = addonInstance.settings[panelKey][name] or default
+                if value then
+                    control.EditBox:SetText(value)
+                    control.EditBox:SetCursorPosition(0)
+                end
+            end
+        else
+            if default then
+                control.EditBox:SetText(default)
+                control.EditBox:SetCursorPosition(0)
+            end
+        end
+
+        local newYOffset = yOffset - self.config.ui.spacing.controlHeight
+        callHook(self, "AfterAddInputBox", control, newYOffset)
+        return control, newYOffset
+    end
+
+    function addon:ShowDialog(dialogOptions)
+        local addonInstance = self
+        dialogOptions = callHook(self, "BeforeShowDialog", dialogOptions)
+
+        self:debug("ShowDialog called")
+        local dialog = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+
+        local uiCfg = self.config.ui
+        local width = dialogOptions.width or uiCfg.dialog.defaultWidth
+        dialog:SetWidth(width)
+        dialog:SetPoint("CENTER")
+        dialog:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            tile = false,
+            edgeSize = uiCfg.backdrop.edgeSize,
+            insets = uiCfg.backdrop.insets
+        })
+        dialog:SetBackdropColor(0, 0, 0, 1)
+        dialog:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
+        dialog:SetFrameStrata("DIALOG")
+        dialog:EnableMouse(true)
+
+        local title = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        title:SetPoint("TOP", 0, uiCfg.dialog.titleOffset)
+        title:SetText(self:L(dialogOptions.title))
+
+        local content = CreateFrame("Frame", nil, dialog)
+        content:SetPoint("TOPLEFT", uiCfg.spacing.contentLeft, uiCfg.dialog.contentTop)
+        content:SetPoint("BOTTOMRIGHT", uiCfg.spacing.contentRight, uiCfg.dialog.contentBottom)
+
+        local yOffset = uiCfg.dialog.initialYOffset
+        local inputBoxControls = {}
+        if dialogOptions.controls then
+            for _, controlConfig in ipairs(dialogOptions.controls) do
+                local control, newYOffset = self:AddControl(content, yOffset, "dialog", controlConfig)
+                if controlConfig.type == "inputBox" and controlConfig.highlightText and control then
+                    table.insert(inputBoxControls, control)
+                end
+                yOffset = newYOffset
+            end
+        end
+
+        local contentHeight = math.abs(yOffset) + uiCfg.dialog.contentPadding
+        local calculatedHeight = uiCfg.dialog.titleHeight + contentHeight + uiCfg.dialog.buttonHeight
+
+        local height = dialogOptions.height or calculatedHeight
+        dialog:SetHeight(height)
+
+        local closeButton = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
+        closeButton:SetSize(uiCfg.dialog.buttonSize.width, uiCfg.dialog.buttonSize.height)
+        closeButton:SetPoint("BOTTOM", 0, uiCfg.dialog.buttonOffset)
+        closeButton:SetText(self:L("core_close"))
+        closeButton:SetScript("OnClick", function()
+            dialog:Hide()
+            if dialogOptions.onClose then
+                dialogOptions.onClose()
+            end
+        end)
+
+        dialog:SetScript("OnKeyDown", function(self, key)
+            if key == "ESCAPE" then
+                closeButton:Click()
+            end
+        end)
+
+        dialog:Show()
+
+        if #inputBoxControls > 0 then
+            local firstControl = inputBoxControls[1]
+            if firstControl.EditBox then
+                C_Timer.After(0, function()
+                    firstControl.EditBox:SetFocus()
+                    firstControl.EditBox:HighlightText()
+                end)
+            end
+        end
+
+        callHook(self, "AfterShowDialog", dialog)
+        return dialog
+    end
+
+    function addon:AddControl(parent, yOffset, panelKey, controlConfig)
+        parent, yOffset, panelKey, controlConfig = callHook(self, "BeforeAddControl", parent, yOffset, panelKey,
+            controlConfig)
+
+        local controlType = controlConfig.type
+
+        if controlType == "header" then
+            local control, newYOffset = self:AddHeader(parent, yOffset, panelKey, controlConfig.name)
+            callHook(self, "AfterAddControl", control, newYOffset)
+            return control, newYOffset
+
+        elseif controlType == "checkbox" then
+            local control, newYOffset = self:AddCheckbox(parent, yOffset, panelKey, controlConfig.name,
+                controlConfig.default, controlConfig.onValueChange, controlConfig.skipRefresh, controlConfig.sessionOnly)
+            callHook(self, "AfterAddControl", control, newYOffset)
+            return control, newYOffset
+
+        elseif controlType == "dropdown" then
+            local control, newYOffset = self:AddDropdown(parent, yOffset, panelKey, controlConfig.name,
+                controlConfig.default, controlConfig.options, controlConfig.onValueChange, controlConfig.skipRefresh,
+                controlConfig.sessionOnly)
+            callHook(self, "AfterAddControl", control, newYOffset)
+            return control, newYOffset
+
+        elseif controlType == "slider" then
+            local control, newYOffset = self:AddSlider(parent, yOffset, panelKey, controlConfig.name,
+                controlConfig.default, controlConfig.min, controlConfig.max, controlConfig.step,
+                controlConfig.onValueChange, controlConfig.skipRefresh, controlConfig.sessionOnly)
+            callHook(self, "AfterAddControl", control, newYOffset)
+            return control, newYOffset
+
+        elseif controlType == "button" then
+            local control, newYOffset = self:AddButton(parent, yOffset, panelKey, controlConfig.name,
+                controlConfig.onClick)
+            callHook(self, "AfterAddControl", control, newYOffset)
+            return control, newYOffset
+
+        elseif controlType == "description" then
+            local control, newYOffset = self:AddDescription(parent, yOffset, panelKey, controlConfig.name,
+                controlConfig.onClick)
+            callHook(self, "AfterAddControl", control, newYOffset)
+            return control, newYOffset
+
+        elseif controlType == "inputBox" then
+            local buttonText = controlConfig.buttonText and self:L(controlConfig.buttonText) or nil
+            local control, newYOffset = self:AddInputBox(parent, yOffset, panelKey, controlConfig.name,
+                controlConfig.default, controlConfig.highlightText, buttonText, controlConfig.onClick,
+                controlConfig.onValueChange, controlConfig.sessionOnly)
+            callHook(self, "AfterAddControl", control, newYOffset)
+            return control, newYOffset
+
+        elseif controlType == "colorPicker" then
+            local control, newYOffset = self:AddColorPicker(parent, yOffset, panelKey, controlConfig.name,
+                controlConfig.default, controlConfig.onValueChange, controlConfig.skipRefresh, controlConfig.sessionOnly)
+            callHook(self, "AfterAddControl", control, newYOffset)
+            return control, newYOffset
+
+        elseif controlType == "divider" then
+            local control, newYOffset = self:AddDivider(parent, yOffset, panelKey)
+            callHook(self, "AfterAddControl", control, newYOffset)
+            return control, newYOffset
+
+        else
+            self:debug("Unknown control type: " .. tostring(controlType))
+            callHook(self, "AfterAddControl", false, yOffset)
+            return false, yOffset
+        end
+    end
+end
+
+do -- Utility Functions
+
+    function addon:hexToRGB(hex)
+        hex = hex:gsub("#", "")
+        local r = tonumber(hex:sub(1, 2), 16) / 255
+        local g = tonumber(hex:sub(3, 4), 16) / 255
+        local b = tonumber(hex:sub(5, 6), 16) / 255
+        local a = 1
+        if #hex == 8 then
+            a = tonumber(hex:sub(7, 8), 16) / 255
+        end
+        return r, g, b, a
+    end
+
+    function addon:rgbToHex(r, g, b, a)
+        r = math.floor(r * 255 + 0.5)
+        g = math.floor(g * 255 + 0.5)
+        b = math.floor(b * 255 + 0.5)
+        if a then
+            a = math.floor(a * 255 + 0.5)
+            return string.format("#%02X%02X%02X%02X", r, g, b, a)
+        end
+        return string.format("#%02X%02X%02X", r, g, b)
+    end
+
+    function addon:OpenSettings()
+        callHook(self, "BeforeOpenSettings")
+
+        if InCombatLockdown() then
+            self:error(self:L("core_cannotOpenInCombat"))
+            callHook(self, "AfterOpenSettings", false)
+            return false
+        end
+
+        if type(Settings) == "table" and type(Settings.OpenToCategory) == "function" then
+            if self.settingsCategory and self.settingsCategory.ID then
+                Settings.OpenToCategory(self.settingsCategory.ID)
+            end
+        end
+
+        local returnValue = true
+        callHook(self, "AfterOpenSettings", returnValue)
+        return returnValue
+    end
+
+    function addon:L(key)
+        key = callHook(self, "BeforeL", key)
+
+        if not key then
+            callHook(self, "AfterL", "")
+            return ""
+        end
+
+        key = key:gsub(" ", "_")
+        key = key:gsub("[^%w_]", "")
+
+        if key == "author" then
+            callHook(self, "AfterL", self.author)
+            return self.author
+        end
+        if not self.localization then
+            local returnValue = "[" .. key .. "]"
+            callHook(self, "AfterL", returnValue)
+            return returnValue
+        end
+        local result = self.localization[key] or ("[" .. key .. "]")
+        callHook(self, "AfterL", result)
+        return result
+    end
+
+    function addon:coreInfo(text)
+        print("\124cffDB09FE" .. "SAdCore" .. ": " .. "\124cffBAFF1A" .. tostring(text))
+    end
+
+    function addon:coreDebug(text)
+        if self.settings and self.settings.main and self.settings.main.core_enableDebugging then
+            print("\124cffDB09FE" .. "SAdCore" .. " Debug: " .. "\124cffBAFF1A" .. tostring(text))
+        end
+    end
+
+    function addon:info(text)
+        text = callHook(self, "BeforeInfo", text)
+
+        print("\124cffDB09FE" .. self.addonName .. ": " .. "\124cffBAFF1A" .. tostring(text))
+
+        local returnValue = true
+        callHook(self, "AfterInfo", returnValue)
+        return returnValue
+    end
+
+    function addon:error(text)
+        text = callHook(self, "BeforeError", text)
+
+        print("\124cffDB09FE" .. self.addonName .. ": " .. "\124cffBAFF1A" .. tostring(text))
+
+        local returnValue = true
+        callHook(self, "AfterError", returnValue)
+        return returnValue
+    end
+
+    function addon:debug(text)
+        text = callHook(self, "BeforeDebug", text)
+       
+        if self.settings and self.settings.main and self.settings.main.core_enableDebugging then
+            print("\124cffDB09FE" .. self.addonName .. " Debug: " .. "\124cffBAFF1A" .. tostring(text))
+        end
+
+        local returnValue = true
+        callHook(self, "AfterDebug", returnValue)
+        return returnValue
+    end
+
+    function addon:dump(value, name)
+        value, name = callHook(self, "BeforeDump", value, name)
+        
+        DevTools_Dump(value, name or self.addonName)
+        
+        local returnValue = true
+        callHook(self, "AfterDump", returnValue)
+        return returnValue
+    end
+
+    function addon:RefreshSettingsPanels()
+        callHook(self, "BeforeRefreshSettingsPanels")
+
+        if self.settingsPanels then
+            for panelKey, panel in pairs(self.settingsPanels) do
+                if panel and panel.controlRefreshers then
+                    for _, refreshFunc in ipairs(panel.controlRefreshers) do
+                        refreshFunc()
+                    end
+                end
+            end
+        end
+
+        local returnValue = true
+        callHook(self, "AfterRefreshSettingsPanels", returnValue)
+        return returnValue
+    end
+
+    function addon:UpdateActiveSettings(useCharacter)
+        useCharacter = callHook(self, "BeforeUpdateActiveSettings", useCharacter)
+        self:debug("UpdateActiveSettings called with: " .. tostring(useCharacter) .. " (type: " .. type(useCharacter) ..
+                       ")")
+        self:debug("settingsChar exists: " .. tostring(self.settingsChar ~= nil) .. ", settingsGlobal exists: " ..
+                       tostring(self.settingsGlobal ~= nil))
+
+        self.settings = useCharacter and self.settingsChar or self.settingsGlobal
+
+        local profileType = useCharacter and "Character" or "Global"
+        self:debug("Profile switched to: " .. profileType)
+        self:RefreshSettingsPanels()
+
+        local returnValue = true
+        callHook(self, "AfterUpdateActiveSettings", returnValue)
+        return returnValue
+    end
+
+    function addon:ExportSettings()
+        callHook(self, "BeforeExportSettings")
+
+        local exportData = {
+            addon = self.addonName,
+            version = tostring(self.config.version),
+            settings = self.settings
+        }
+
+        local LibSerialize = self.LibSerialize
+        local LibCompress = self.LibCompress
+        local success, serialized = pcall(function()
+            return LibSerialize:Serialize(exportData)
+        end)
+        if not success or not serialized then
+            self:debug("Serialize failed.")
+            callHook(self, "AfterExportSettings", false)
+            return false
+        end
+        local encoded = LibCompress:Encode(serialized)
+        if not encoded then
+            self:debug("Encode failed.")
+            callHook(self, "AfterExportSettings", false)
+            return false
+        end
+
+        self:debug(encoded)
+
+        self:ShowDialog({
+            title = "core_shareSettingsTitle",
+            controls = {{
+                type = "inputBox",
+                name = "core_shareSettingsLabel",
+                default = encoded,
+                highlightText = true
+            }}
+        })
+
+        callHook(self, "AfterExportSettings", encoded)
+        return encoded
+    end
+
+    function addon:ImportSettings(serializedString)
+        serializedString = callHook(self, "BeforeImportSettings", serializedString)
+
+        if not serializedString or serializedString == "" then
+            self:error(self:L("importStringEmpty"))
+            callHook(self, "AfterImportSettings", false)
+            return false
+        end
+
+        serializedString = serializedString:match("^%s*(.-)%s*$")
+        self:debug("Import string length after trim: " .. #serializedString)
+
+        local LibSerialize = self.LibSerialize
+        local LibCompress = self.LibCompress
+
+        self:debug("Decoding import string...")
+        local decoded = LibCompress:Decode(serializedString)
+        if not decoded then
+            self:error(self:L("core_importDecodeFailed"))
+            self:debug("Decode returned nil - invalid base64 string")
+            callHook(self, "AfterImportSettings", false)
+            return false
+        end
+        self:debug("Decode successful. Decoded length: " .. #decoded)
+
+        self:debug("Deserializing...")
+        local data, err = LibSerialize:Deserialize(decoded)
+        if not data then
+            self:error(self:L("core_importDeserializeFailed") .. ": " .. tostring(err))
+            self:debug("Deserialization failed. Error: " .. tostring(err))
+            callHook(self, "AfterImportSettings", false)
+            return false
+        end
+        self:debug("Deserialization successful")
+
+        if type(data) ~= "table" then
+            self:error(self:L("core_importInvalidData"))
+            self:debug("Data is not a table. Type: " .. type(data))
+            callHook(self, "AfterImportSettings", false)
+            return false
+        end
+
+        self:debug("Data is a table, checking contents...")
+
+        local keys = {}
+        for k, v in pairs(data) do
+            table.insert(keys, tostring(k) .. "=" .. tostring(v))
+        end
+        self:debug("Data keys: " .. table.concat(keys, ", "))
+
+        self:debug("Import: - addon: " .. tostring(data.addon) .. ", version: " .. tostring(data.version))
+        self:debug("Loaded: - addon: " .. tostring(self.addonName) .. ", version: " ..tostring(self.config.version))
+
+        if data.addon ~= self.addonName then
+            self:error(self:L("core_importWrongAddon") .. ": " .. tostring(data.addon) .. " (expected: " ..
+                           tostring(self.addonName) .. ")")
+            self:debug("Addon name mismatch: '" .. tostring(data.addon) .. "' != '" .. tostring(self.addonName) .. "'")
+            callHook(self, "AfterImportSettings", false)
+            return false
+        end
+
+        self:debug("Addon name check passed")
+
+        if tostring(data.version) ~= tostring(self.config.version) then
+            self:info(self:L("core_importAddonVersionMismatch") .. " " .. self:L("core_installed") .. ": " ..
+                          tostring(self.config.version) .. ", " .. self:L("core_importString") .. ": " ..
+                          tostring(data.version) .. ". " .. self:L("core_dataMismatchWarning"))
+        end
+
+        if not data.settings or type(data.settings) ~= "table" then
+            self:error(self:L("importInvalidSettings"))
+            self:debug("data.settings is not a table. Type: " .. type(data.settings))
+            callHook(self, "AfterImportSettings", false)
+            return false
+        end
+
+        local importedSettings = data.settings
+
+        self:debug("Clearing current settings and importing...")
+        for key in pairs(self.settings) do
+            self.settings[key] = nil
+        end
+
+        for key, value in pairs(importedSettings) do
+            self.settings[key] = value
+        end
+
+        self:info(self:L("core_importSuccess"))
+        self:RefreshSettingsPanels()
+
+        callHook(self, "AfterImportSettings", true)
+        return true
+    end
+
+end
+
+do -- Combat Queue System
+
+    function addon:InitializeCombatQueue()
+        callHook(self, "BeforeInitializeCombatQueue")
+
+        self.combatQueue = self.combatQueue or {}
+
+        if not self.combatQueueFrame then
+            self.combatQueueFrame = CreateFrame("Frame")
+            local addonInstance = self
+
+            self.combatQueueFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+            self.combatQueueFrame:SetScript("OnEvent", function(frame, event)
+                if event == "PLAYER_REGEN_ENABLED" then
+                    addonInstance:ProcessCombatQueue()
+                end
+            end)
+        end
+
+        local returnValue = true
+        callHook(self, "AfterInitializeCombatQueue", returnValue)
+        return returnValue
+    end
+
+    function addon:WrapCombatSafeFunctions()
+        callHook(self, "BeforeWrapCombatSafeFunctions")
+
+        if not self.CombatSafe then
+            callHook(self, "AfterWrapCombatSafeFunctions", true)
+            return true
+        end
+
+        for funcName, originalFunc in pairs(self.CombatSafe) do
+            if type(originalFunc) == "function" then
+                self.CombatSafe[funcName] = function(self, ...)
+                    local args = {...}
+
+                    if InCombatLockdown() then
+                        table.insert(self.combatQueue, {
+                            func = originalFunc,
+                            args = args
+                        })
+                        self:debug("Action queued for after combat: " .. funcName)
+                        return false
+                    end
+
+                    local success, result = pcall(originalFunc, self, unpack(args))
+
+                    if success then
+                        return result
+                    else
+                        self:error(self:L("core_combatSafeFunctionError") .. " " .. funcName .. ": " .. tostring(result))
+                        return false
+                    end
+                end
+            end
+        end
+
+        local returnValue = true
+        callHook(self, "AfterWrapCombatSafeFunctions", returnValue)
+        return returnValue
+    end
+
+    function addon:ProcessCombatQueue()
+        callHook(self, "BeforeProcessCombatQueue")
+
+        if not self.combatQueue or #self.combatQueue == 0 then
+            callHook(self, "AfterProcessCombatQueue", true)
+            return true
+        end
+
+        local queueCount = #self.combatQueue
+        self:debug("Processing queued actions: " .. queueCount)
+
+        local processedCount = 0
+        local failedCount = 0
+
+        while #self.combatQueue > 0 do
+            local action = table.remove(self.combatQueue, 1)
+            local success, result = pcall(action.func, self, unpack(action.args))
+
+            if success then
+                processedCount = processedCount + 1
+            else
+                failedCount = failedCount + 1
+                self:error(self:L("core_queuedActionFailed") .. ": " .. tostring(result))
+            end
+        end
+
+        if processedCount > 0 then
+            self:debug("Processed actions: " .. processedCount)
+        end
+
+        if failedCount > 0 then
+            self:debug("Failed actions: " .. failedCount)
+        end
+
+        local returnValue = true
+        callHook(self, "AfterProcessCombatQueue", returnValue)
+        return returnValue
+    end
+
+    function addon:ClearCombatQueue()
+        callHook(self, "BeforeClearCombatQueue")
+
+        local queueCount = #self.combatQueue
+        self.combatQueue = {}
+
+        if queueCount > 0 then
+            self:debug("Cleared queued actions: " .. queueCount)
+        end
+
+        local returnValue = true
+        callHook(self, "AfterClearCombatQueue", returnValue)
+        return returnValue
+    end
+
+end
+
+do -- Localization
+    SAdCore.prototype.locale = SAdCore.prototype.locale or {}
+
+    SAdCore.prototype.locale.enEN = {
+        core_SAdCore = "SAdCore",
+        core_versionPrefix = "v",
+        core_close = "Close",
+        core_debuggingHeader = "Debugging",
+        core_profile = "Profile",
+        core_enableDebugging = "Enable Debugging",
+        core_enableDebuggingTooltip = "Enable debug messages in the chat window.",
+        core_useCharacterSettings = "Use Character Specific Settings",
+        core_characterSpecificSettingsTooltip = "When enabled, settings will be saved per character instead of account-wide.",
+        core_loadSettings = "Load Settings from String",
+        core_loadSettingsTooltip = "Paste an exported settings string and click Load to import settings.",
+        core_loadSettingsButton = "Load",
+        core_shareSettings = "Share",
+        core_shareSettingsTooltip = "Export your current settings as a string that can be shared with others.",
+        core_shareSettingsTitle = "Share Settings",
+        core_shareSettingsLabel = "Press CTRL + C to Copy",
+        core_importDecodeFailed = "Decode failed.",
+        core_importDeserializeFailed = "Deserialize failed.",
+        core_importInvalidData = "Invalid data structure.",
+        core_importWrongAddon = "Imported settings are for a different addon",
+        core_importAddonVersionMismatch = "Addon version mismatch.",
+        core_importSuccess = "Settings imported successfully.",
+        core_installed = "Installed",
+        core_importString = "Import String",
+        core_dataMismatchWarning = "There may be data compatibility issues.",
+        core_tagline = "Simple Addons—Bare minimum addons for bare minimum brains.",
+        core_authorTitle = "Author",
+        core_authorName = "Press CTRL + C to Copy",
+        core_errorConfigHelp1 = "SavedVariables configuration error detected.",
+        core_errorConfigHelp2 = "All variable names must contain the addon name to ensure uniqueness across all addons.",
+        core_errorConfigExample = "Example configuration for addon",
+        core_cannotOpenInCombat = "Cannot open settings while in combat.",
+        core_combatSafeFunctionError = "Combat safe function error",
+        core_queuedActionFailed = "Combat safe queued action failed"
+    }
+
+    -- Spanish
+    SAdCore.prototype.locale.esES = {
+        core_SAdCore = "SAdCore",
+        core_versionPrefix = "v",
+        core_close = "Cerrar",
+        core_debuggingHeader = "Depuración",
+        core_profile = "Perfil",
+        core_enableDebugging = "Habilitar Depuración",
+        core_enableDebuggingTooltip = "Habilitar mensajes de depuración en la ventana de chat.",
+        core_useCharacterSettings = "Usar Configuración Específica del Personaje",
+        core_characterSpecificSettingsTooltip = "Cuando está habilitado, la configuración se guardará por personaje en lugar de para toda la cuenta.",
+        core_loadSettings = "Cargar Configuración desde Cadena",
+        core_loadSettingsTooltip = "Pega una cadena de configuración exportada y haz clic en Cargar para importar la configuración.",
+        core_loadSettingsButton = "Cargar",
+        core_shareSettings = "Compartir",
+        core_shareSettingsTooltip = "Exporta tu configuración actual como una cadena que se puede compartir con otros.",
+        core_shareSettingsTitle = "Compartir Configuración",
+        core_shareSettingsLabel = "Presiona CTRL + C para Copiar",
+        core_importDecodeFailed = "Error al decodificar.",
+        core_importDeserializeFailed = "Error al deserializar.",
+        core_importInvalidData = "Estructura de datos inválida.",
+        core_importWrongAddon = "La configuración importada es para un addon diferente",
+        core_importAddonVersionMismatch = "La versión del addon no coincide.",
+        core_importSuccess = "Configuración importada exitosamente.",
+        core_installed = "Instalado",
+        core_importString = "Cadena de Importación",
+        core_dataMismatchWarning = "Puede haber problemas de compatibilidad de datos.",
+        core_tagline = "Simple Addons—Addons mínimos para mentes mínimas.",
+        core_authorTitle = "Autor",
+        core_authorName = "Presiona CTRL + C para Copiar",
+        core_errorConfigHelp1 = "Se detectó un error de configuración de SavedVariables.",
+        core_errorConfigHelp2 = "Todos los nombres de variables deben contener el nombre del addon para garantizar la unicidad entre todos los addons.",
+        core_errorConfigExample = "Ejemplo de configuración para el addon",
+        core_cannotOpenInCombat = "No se puede abrir la configuración durante el combate.",
+        core_combatSafeFunctionError = "Error en función protegida contra combate",
+        core_queuedActionFailed = "Acción en cola falló"
+    }
+
+    SAdCore.prototype.locale.esMX = SAdCore.prototype.locale.esES
+
+    -- Portuguese
+    SAdCore.prototype.locale.ptBR = {
+        core_SAdCore = "SAdCore",
+        core_versionPrefix = "v",
+        core_close = "Fechar",
+        core_debuggingHeader = "Depuração",
+        core_profile = "Perfil",
+        core_enableDebugging = "Habilitar Depuração",
+        core_enableDebuggingTooltip = "Habilitar mensagens de depuração na janela de chat.",
+        core_useCharacterSettings = "Usar Configurações Específicas do Personagem",
+        core_characterSpecificSettingsTooltip = "Quando habilitado, as configurações serão salvas por personagem em vez de para toda a conta.",
+        core_loadSettings = "Carregar Configurações da String",
+        core_loadSettingsTooltip = "Cole uma string de configurações exportada e clique em Carregar para importar as configurações.",
+        core_loadSettingsButton = "Carregar",
+        core_shareSettings = "Compartilhar",
+        core_shareSettingsTooltip = "Exporte suas configurações atuais como uma string que pode ser compartilhada com outros.",
+        core_shareSettingsTitle = "Compartilhar Configurações",
+        core_shareSettingsLabel = "Pressione CTRL + C para Copiar",
+        core_importDecodeFailed = "Falha na decodificação.",
+        core_importDeserializeFailed = "Falha na desserialização.",
+        core_importInvalidData = "Estrutura de dados inválida.",
+        core_importWrongAddon = "As configurações importadas são para um addon diferente",
+        core_importAddonVersionMismatch = "Incompatibilidade de versão do addon.",
+        core_importSuccess = "Configurações importadas com sucesso.",
+        core_installed = "Instalado",
+        core_importString = "String de Importação",
+        core_dataMismatchWarning = "Pode haver problemas de compatibilidade de dados.",
+        core_tagline = "Simple Addons—Addons mínimos para mentes mínimas.",
+        core_authorTitle = "Autor",
+        core_authorName = "Pressione CTRL + C para Copiar",
+        core_errorConfigHelp1 = "Erro de configuração de SavedVariables detectado.",
+        core_errorConfigHelp2 = "Todos os nomes de variáveis devem conter o nome do addon para garantir exclusividade entre todos os addons.",
+        core_errorConfigExample = "Exemplo de configuração para o addon",
+        core_cannotOpenInCombat = "Não é possível abrir as configurações durante o combate.",
+        core_combatSafeFunctionError = "Erro na função protegida contra combate",
+        core_queuedActionFailed = "Ação enfileirada falhou"
+    }
+
+    -- French
+    SAdCore.prototype.locale.frFR = {
+        core_SAdCore = "SAdCore",
+        core_versionPrefix = "v",
+        core_close = "Fermer",
+        core_debuggingHeader = "Débogage",
+        core_profile = "Profil",
+        core_enableDebugging = "Activer le Débogage",
+        core_enableDebuggingTooltip = "Activer les messages de débogage dans la fenêtre de chat.",
+        core_useCharacterSettings = "Utiliser les Paramètres Spécifiques au Personnage",
+        core_characterSpecificSettingsTooltip = "Lorsqu'activé, les paramètres seront sauvegardés par personnage au lieu de pour tout le compte.",
+        core_loadSettings = "Charger les Paramètres depuis une Chaîne",
+        core_loadSettingsTooltip = "Collez une chaîne de paramètres exportée et cliquez sur Charger pour importer les paramètres.",
+        core_loadSettingsButton = "Charger",
+        core_shareSettings = "Partager",
+        core_shareSettingsTooltip = "Exportez vos paramètres actuels sous forme de chaîne pouvant être partagée avec d'autres.",
+        core_shareSettingsTitle = "Partager les Paramètres",
+        core_shareSettingsLabel = "Appuyez sur CTRL + C pour Copier",
+        core_importDecodeFailed = "Échec du décodage.",
+        core_importDeserializeFailed = "Échec de la désérialisation.",
+        core_importInvalidData = "Structure de données invalide.",
+        core_importWrongAddon = "Les paramètres importés sont pour un addon différent",
+        core_importAddonVersionMismatch = "Incompatibilité de version de l'addon.",
+        core_importSuccess = "Paramètres importés avec succès.",
+        core_installed = "Installé",
+        core_importString = "Chaîne d'Importation",
+        core_dataMismatchWarning = "Il peut y avoir des problèmes de compatibilité des données.",
+        core_tagline = "Simple Addons—Addons minimaux pour esprits minimaux.",
+        core_authorTitle = "Auteur",
+        core_authorName = "Appuyez sur CTRL + C pour Copier",
+        core_errorConfigHelp1 = "Erreur de configuration de SavedVariables détectée.",
+        core_errorConfigHelp2 = "Tous les noms de variables doivent contenir le nom de l'addon pour garantir l'unicité entre tous les addons.",
+        core_errorConfigExample = "Exemple de configuration pour l'addon"
+    }
+
+    -- German
+    SAdCore.prototype.locale.deDE = {
+        core_SAdCore = "SAdCore",
+        core_versionPrefix = "v",
+        core_close = "Schließen",
+        core_debuggingHeader = "Debugging",
+        core_profile = "Profil",
+        core_enableDebugging = "Debugging aktivieren",
+        core_enableDebuggingTooltip = "Debug-Nachrichten im Chatfenster aktivieren.",
+        core_useCharacterSettings = "Charakterspezifische Einstellungen verwenden",
+        core_characterSpecificSettingsTooltip = "Wenn aktiviert, werden die Einstellungen pro Charakter statt account-weit gespeichert.",
+        core_loadSettings = "Einstellungen aus Zeichenfolge laden",
+        core_loadSettingsTooltip = "Fügen Sie eine exportierte Einstellungs-Zeichenfolge ein und klicken Sie auf Laden, um die Einstellungen zu importieren.",
+        core_loadSettingsButton = "Laden",
+        core_shareSettings = "Teilen",
+        core_shareSettingsTooltip = "Exportieren Sie Ihre aktuellen Einstellungen als Zeichenfolge, die mit anderen geteilt werden kann.",
+        core_shareSettingsTitle = "Einstellungen teilen",
+        core_shareSettingsLabel = "Drücken Sie STRG + C zum Kopieren",
+        core_importDecodeFailed = "Dekodierung fehlgeschlagen.",
+        core_importDeserializeFailed = "Deserialisierung fehlgeschlagen.",
+        core_importInvalidData = "Ungültige Datenstruktur.",
+        core_importWrongAddon = "Die importierten Einstellungen sind für ein anderes Addon",
+        core_importAddonVersionMismatch = "Addon-Versionskonflikt.",
+        core_importSuccess = "Einstellungen erfolgreich importiert.",
+        core_installed = "Installiert",
+        core_importString = "Import-Zeichenfolge",
+        core_dataMismatchWarning = "Es können Datenkompatibilitätsprobleme auftreten.",
+        core_tagline = "Simple Addons—Minimale Addons für minimale Köpfe.",
+        core_authorTitle = "Autor",
+        core_authorName = "Drücken Sie STRG + C zum Kopieren",
+        core_errorConfigHelp1 = "SavedVariables-Konfigurationsfehler erkannt.",
+        core_errorConfigHelp2 = "Alle Variablennamen müssen den Addon-Namen enthalten, um Eindeutigkeit über alle Addons hinweg zu gewährleisten.",
+        core_errorConfigExample = "Beispielkonfiguration für Addon"
+    }
+
+    -- Russian
+    SAdCore.prototype.locale.ruRU = {
+        core_SAdCore = "SAdCore",
+        core_versionPrefix = "v",
+        core_close = "Закрыть",
+        core_debuggingHeader = "Дебаггинг",
+        core_profile = "Профиль",
+        core_enableDebugging = "Включить отладку",
+        core_enableDebuggingTooltip = "Включить отладочные сообщения в окне чата.",
+        core_useCharacterSettings = "Использовать настройки персонажа",
+        core_characterSpecificSettingsTooltip = "Когда включено, настройки сохраняются для каждого персонажа отдельно, а не для всей учетной записи.",
+        core_loadSettings = "Загрузить настройки из строки",
+        core_loadSettingsTooltip = "Вставьте экспортированную строку настроек и нажмите Загрузить для импорта.",
+        core_loadSettingsButton = "Загрузить",
+        core_shareSettings = "Поделиться",
+        core_shareSettingsTooltip = "Экспортировать текущие настройки в виде строки, которой можно поделиться с другими.",
+        core_shareSettingsTitle = "Поделиться настройками",
+        core_shareSettingsLabel = "Нажмите CTRL + C для копирования",
+        core_importDecodeFailed = "Ошибка декодирования.",
+        core_importDeserializeFailed = "Ошибка десериализации.",
+        core_importInvalidData = "Неверная структура данных.",
+        core_importWrongAddon = "Импортированные настройки предназначены для другого аддона",
+        core_importAddonVersionMismatch = "Несовпадение версий аддона.",
+        core_importSuccess = "Настройки успешно импортированы.",
+        core_installed = "Установлено",
+        core_importString = "Строка импорта",
+        core_dataMismatchWarning = "Возможны проблемы совместимости данных.",
+        core_tagline = "Simple Addons—Минимальные аддоны для минимальных умов.",
+        core_authorTitle = "Автор",
+        core_authorName = "Нажмите CTRL + C для копирования",
+        core_errorConfigHelp1 = "Обнаружена ошибка конфигурации SavedVariables.",
+        core_errorConfigHelp2 = "Все имена переменных должны содержать имя аддона для обеспечения уникальности среди всех аддонов.",
+        core_errorConfigExample = "Пример конфигурации для аддона"
+    }
+
+end
