@@ -53,12 +53,11 @@ function addon:examplePanelCheckbox(isChecked)
     self:Info("Checkbox changed to: " .. tostring(isChecked))
 end
 
--- Combat-safe functions example
-addon.CombatSafe.exampleCombatSafeFunction = function(self, message)
-    -- This function can safely modify UI elements even if called during combat
-    -- It will be queued automatically and executed when combat ends
-    self:Info("Combat-safe function executed: " .. message)
-    return true
+-- Combat-safe function example
+function addon:exampleCombatSafeAction()
+    self:CombatSafe(function()
+        self:Info("This action is queued during combat, executed after.")
+    end)
 end
 
 -- Localization

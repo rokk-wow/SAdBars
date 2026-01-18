@@ -437,42 +437,20 @@ end
 
 ## Combat-Safe Functions
 
-Some WoW API calls cannot be made during combat (e.g., modifying secure frames, changing UI positions). SAdCore provides a combat queue system that automatically delays these actions until combat ends.
+Some WoW API calls cannot be made during combat (e.g., modifying secure frames, changing UI positions). SAdCore provides `CombatSafe()` to automatically queue actions during combat and execute them when combat ends.
 
-### Using the CombatSafe Table
-
-Define functions in `addon.CombatSafe` to make them combat-safe. The `CombatSafe` table is automatically initialized by SAdCore when you call `GetAddon()`. SAdCore automatically wraps these functions to queue them during combat and execute them when combat ends.
-
-**Important:** CombatSafe functions must be defined with `self` as the first parameter and called with dot notation (`.`), explicitly passing `self` as the first argument.
-
-### Example: Frame Updates
+### Example
 
 ```lua
--- Define CombatSafe function with self as first parameter
-addon.CombatSafe.updateHealthBar = function(self, health, maxHealth)
-    local percentage = (health / maxHealth) * 100
-    MyHealthBar:SetValue(percentage)
-    MyHealthBar:Show()
-    return true
-end
-
--- Call using dot notation, passing self explicitly
-function addon:OnUnitHealth(event, unitID)
-    if unitID == "player" then
-        local health = UnitHealth("player")
-        local maxHealth = UnitHealthMax("player")
-        self.CombatSafe.updateHealthBar(self, health, maxHealth)
-    end
+function addon:UpdateFramePosition()
+    self:CombatSafe(function()
+        MyFrame:SetPoint("CENTER", 0, 100)
+        MyFrame:Show()
+    end)
 end
 ```
 
-### Best Practices
-
-- **Use for UI modifications** - Frame positioning, showing/hiding secure frames
-- **Use for settings changes** - Opening settings panel, modifying UI layout
-- **Return values** - Always return `true` on success, `false` on failure
-- **Keep functions simple** - Combat-safe functions should be focused and atomic
-- **Debug mode** - Enable debugging in settings to see queue activity
+If called during combat, the function is queued. When combat ends, it executes automatically. If called outside combat, it executes immediately.
 
 ## Zone Management
 

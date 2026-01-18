@@ -246,7 +246,6 @@ function SAdCore:GetAddon(addonName)
         local newAddon = {
             addonName = addonName,
             core = self,
-            CombatSafe = {},
             locale = {}
         }
         setmetatable(newAddon, {
@@ -402,7 +401,6 @@ do -- Initialize
         self:_InitializeSettingsPanel()
 
         self:_InitializeCombatQueue()
-        self:_WrapCombatSafeFunctions()
 
         local returnValue = true
         callHook(self, "AfterInitialize", returnValue)
@@ -495,7 +493,7 @@ do -- Registration functions
             self.eventFrame:SetScript("OnEvent", function(self, event, ...)
                 local eventCallback = addonInstance.eventCallbacks[event]
                 if eventCallback then
-                    eventCallback(event, ...)
+                    eventCallback(addonInstance, event, ...)
                 end
             end)
         end
@@ -2005,44 +2003,40 @@ do -- Combat Queue System
         return returnValue
     end
 
-    function addon:_WrapCombatSafeFunctions()
-        callHook(self, "BeforeWrapCombatSafeFunctions")
+    function addon:CombatSafe(func)
+        callHook(self, "BeforeCombatSafe", func)
 
-        if not self.CombatSafe then
-            callHook(self, "AfterWrapCombatSafeFunctions", true)
-            return true
+        if type(func) ~= "function" then
+            self:Error(self:L("core_combatSafeRequiresFunction"))
+            callHook(self, "AfterCombatSafe", false)
+            return false
         end
 
-        for funcName, originalFunc in pairs(self.CombatSafe) do
-            if type(originalFunc) == "function" then
-                local addonInstance = self
-                self.CombatSafe[funcName] = function(_, ...)
-                    local args = {...}
-
-                    if InCombatLockdown() then
-                        table.insert(addonInstance.combatQueue, {
-                            func = originalFunc,
-                            args = args
-                        })
-                        addonInstance:Debug("Action queued for after combat: " .. funcName)
-                        return false
-                    end
-
-                    local success, result = pcall(originalFunc, addonInstance, unpack(args))
-
-                    if success then
-                        return result
-                    else
-                        addonInstance:Error(addonInstance:L("core_combatSafeFunctionError") .. " " .. funcName .. ": " .. tostring(result))
-                        return false
-                    end
-                end
+        local addonInstance = self
+        C_Timer.After(0.1, function()
+            if InCombatLockdown() then
+                table.insert(addonInstance.combatQueue, {
+                    func = func,
+                    args = {}
+                })
+                addonInstance:Debug(addonInstance:L("core_actionQueuedForCombat"))
+                callHook(addonInstance, "AfterCombatSafe", false)
+                return false
             end
-        end
 
-        local returnValue = true
-        callHook(self, "AfterWrapCombatSafeFunctions", returnValue)
-        return returnValue
+            local success, result = pcall(func, addonInstance)
+            if success then
+                callHook(addonInstance, "AfterCombatSafe", result)
+                return result
+            end
+
+            addonInstance:Error(addonInstance:L("core_combatSafeFunctionError") .. ": " .. tostring(result))
+            callHook(addonInstance, "AfterCombatSafe", false)
+            return false
+        end)
+
+        callHook(self, "AfterCombatSafe", true)
+        return true
     end
 
     function addon:_ProcessCombatQueue()
@@ -2137,7 +2131,9 @@ do -- Localization
         core_errorConfigHelp2 = "All variable names must contain the addon name to ensure uniqueness across all addons.",
         core_errorConfigExample = "Example configuration for addon",
         core_cannotOpenInCombat = "Cannot open settings while in combat.",
+        core_combatSafeRequiresFunction = "CombatSafe requires a function as parameter",
         core_combatSafeFunctionError = "Combat safe function error",
+        core_actionQueuedForCombat = "Action queued for after combat",
         core_queuedActionFailed = "Combat safe queued action failed"
     }
 
@@ -2175,7 +2171,9 @@ do -- Localization
         core_errorConfigHelp2 = "Todos los nombres de variables deben contener el nombre del addon para garantizar la unicidad entre todos los addons.",
         core_errorConfigExample = "Ejemplo de configuración para el addon",
         core_cannotOpenInCombat = "No se puede abrir la configuración durante el combate.",
+        core_combatSafeRequiresFunction = "CombatSafe requiere una función como parámetro",
         core_combatSafeFunctionError = "Error en función protegida contra combate",
+        core_actionQueuedForCombat = "Acción en cola para después del combate",
         core_queuedActionFailed = "Acción en cola falló"
     }
 
@@ -2215,7 +2213,9 @@ do -- Localization
         core_errorConfigHelp2 = "Todos os nomes de variáveis devem conter o nome do addon para garantir exclusividade entre todos os addons.",
         core_errorConfigExample = "Exemplo de configuração para o addon",
         core_cannotOpenInCombat = "Não é possível abrir as configurações durante o combate.",
+        core_combatSafeRequiresFunction = "CombatSafe requer uma função como parâmetro",
         core_combatSafeFunctionError = "Erro na função protegida contra combate",
+        core_actionQueuedForCombat = "Ação enfileirada para depois do combate",
         core_queuedActionFailed = "Ação enfileirada falhou"
     }
 

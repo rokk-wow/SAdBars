@@ -23,7 +23,7 @@ addon.vars = addon.vars or {
     buttonPadding = 2
 }
 
-addon.CombatSafe.UpdateActionBars = function(self)
+function addon:UpdateActionBars()
     self:CustomizeProcGlow()
     self:HideSpellActivationOverlay()
     self:AddActionButtonBorders()
@@ -45,7 +45,9 @@ function addon:Initialize()
     self.author = "Rôkk-Wyrmrest Accord"
 
     self:RegisterEvent("PLAYER_ENTERING_WORLD", function(event)
-        self.CombatSafe.UpdateActionBars(self)
+        self:CombatSafe(self, function()
+            self:UpdateActionBars()
+        end)
     end)
 end
 
