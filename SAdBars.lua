@@ -42,7 +42,7 @@ function addon:UpdateActionBars()
 end
 
 function addon:Initialize()
-    self.config.version = "1.0"
+    self.sadCore.version = "1.0"
     self.author = "Rôkk-Wyrmrest Accord"
     
     self:RegisterSlashCommand("debug", function()

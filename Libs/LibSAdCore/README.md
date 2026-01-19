@@ -69,11 +69,11 @@ SAddons are:
    addon.compartmentFuncName = "MyAddon_Compartment_Func"
    
    function addon:Initialize()
-       self.config.version = "1.0"
+       self.sadCore.version = "1.0"
        self.author = "Your Name"
        
        -- Example - Add Settings to Main Settings Panel
-       self.config.settings.main = {
+       self.sadCore.panels.main = {
            title = "exampleTitle",
            controls = {
                {
@@ -90,7 +90,7 @@ SAddons are:
        }
        
        -- Example - Add a New Child Settings Panel
-       self.config.settings.examplePanel = {
+       self.sadCore.panels.examplePanel = {
            title = "examplePanelTitle",
            controls = {
                {
@@ -138,11 +138,11 @@ This example shows all available control types using the same naming convention 
 
 ```lua
 function addon:Initialize()
-    self.config.version = "1.0"
+    self.sadCore.version = "1.0"
     self.author = "Your Name"
     
     -- Main Settings Panel
-    self.config.settings.main = {
+    self.sadCore.panels.main = {
         controls = {
             -- Header
             {
@@ -220,7 +220,7 @@ function addon:Initialize()
     }
     
     -- Child Settings Panel
-    self.config.settings.advancedPanel = {
+    self.sadCore.panels.advancedPanel = {
         title = "advancedTitle",
         controls = {
             {
@@ -395,7 +395,7 @@ You can register additional commands as **parameters** to the main slash command
 **Example:**
 ```lua
 function addon:Initialize()
-    self.config.version = "1.0"
+    self.sadCore.version = "1.0"
     self.author = "Your Name"
     
     -- Configure your settings panels here
@@ -431,7 +431,7 @@ Register WoW events with `self:RegisterEvent(eventName, callback)`:
 
 ```lua
 function addon:Initialize()
-    self.config.version = "1.0"
+    self.sadCore.version = "1.0"
     self.author = "Your Name"
     
     -- Configure your settings panels here

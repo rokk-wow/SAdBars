@@ -217,7 +217,7 @@ end
 --[[============================================================================
     SAdCore - Simple Addon Core
 ==============================================================================]]
-local SADCORE_MAJOR, SADCORE_MINOR = "SAdCore-1", 7
+local SADCORE_MAJOR, SADCORE_MINOR = "SAdCore-1", 8
 local SAdCore, oldminor = LibStub:NewLibrary(SADCORE_MAJOR, SADCORE_MINOR)
 if not SAdCore then
     return
@@ -301,9 +301,8 @@ do -- Initialize
     function addon:_Initialize(savedVarsGlobal, savedVarsPerChar)
         callHook(self, "BeforeInitialize", savedVarsGlobal, savedVarsPerChar)
 
-        self.config = self.config or {}
-        self.config.settings = self.config.settings or {}
         self.sadCore = self.sadCore or {}
+        self.sadCore.panels = self.sadCore.panels or {}
         self.sadCore.version = SADCORE_MAJOR:match("%d+") .. "." .. SADCORE_MINOR
         self.apiVersion = select(4, GetBuildInfo())
 
@@ -326,7 +325,7 @@ do -- Initialize
 
         self.localization = self.locale[clientLocale] or self.locale.enEN
 
-        self.config.ui = self.config.ui or {
+        self.sadCore.ui = self.sadCore.ui or {
             spacing = {
                 panelTop = -25,
                 panelBottom = 20,
@@ -666,15 +665,15 @@ do -- Settings Panels
         }}
 
         local main = {}
-        main.title = (self.config.settings.main and self.config.settings.main.title) or self.addonName
+        main.title = (self.sadCore.panels.main and self.sadCore.panels.main.title) or self.addonName
         main.controls = {}
 
         for _, control in ipairs(headerControls) do
             table.insert(main.controls, control)
         end
 
-        if self.config.settings.main and self.config.settings.main.controls then
-            for _, control in ipairs(self.config.settings.main.controls) do
+        if self.sadCore.panels.main and self.sadCore.panels.main.controls then
+            for _, control in ipairs(self.sadCore.panels.main.controls) do
                 table.insert(main.controls, control)
             end
         end
@@ -683,7 +682,7 @@ do -- Settings Panels
             table.insert(main.controls, control)
         end
 
-        self.config.settings.main = main
+        self.sadCore.panels.main = main
 
         local returnValue = true
         callHook(self, "AfterConfigureMainSettings", returnValue)
@@ -693,14 +692,14 @@ do -- Settings Panels
     function addon:_InitializeDefaultSettings()
         callHook(self, "BeforeInitializeDefaultSettings")
 
-        if not self.config.settings then
+        if not self.sadCore.panels then
             callHook(self, "AfterInitializeDefaultSettings", false)
             return false
         end
 
         self.savedVars.data = self.savedVars.data or {}
 
-        for panelKey, panelConfig in pairs(self.config.settings) do
+        for panelKey, panelConfig in pairs(self.sadCore.panels) do
             self.savedVars[panelKey] = self.savedVars[panelKey] or {}
             
             if panelConfig.controls then
@@ -733,7 +732,7 @@ do -- Settings Panels
         self.settingsPanels["main"] = self.mainSettingsPanel
 
         local sortedPanelKeys = {}
-        for panelKey in pairs(self.config.settings) do
+        for panelKey in pairs(self.sadCore.panels) do
             if panelKey ~= "main" then
                 table.insert(sortedPanelKeys, panelKey)
             end
@@ -741,7 +740,7 @@ do -- Settings Panels
         table.sort(sortedPanelKeys)
 
         for _, panelKey in ipairs(sortedPanelKeys) do
-            local panelConfig = self.config.settings[panelKey]
+            local panelConfig = self.sadCore.panels[panelKey]
             local childPanel = self:_BuildChildSettingsPanel(panelKey)
             if childPanel then
                 local categoryName = self:L(panelConfig.title or panelKey)
@@ -769,7 +768,7 @@ do -- Settings Panels
         panel.controlRefreshers = {}
 
         local content = panel.ScrollFrame.Content
-        local yOffset = self.config.ui.spacing.panelTop
+        local yOffset = self.sadCore.ui.spacing.panelTop
 
         if config.controls then
             for _, controlConfig in ipairs(config.controls) do
@@ -781,7 +780,7 @@ do -- Settings Panels
             end
         end
 
-        content:SetHeight(math.abs(yOffset) + self.config.ui.spacing.panelBottom)
+        content:SetHeight(math.abs(yOffset) + self.sadCore.ui.spacing.panelBottom)
 
         callHook(self, "AfterBuildSettingsPanelHelper", panel)
         return panel
@@ -790,7 +789,7 @@ do -- Settings Panels
     function addon:_BuildMainSettingsPanel()
         callHook(self, "BeforeBuildMainSettingsPanel")
 
-        local panel = self:_BuildSettingsPanelHelper("main", self.config.settings.main)
+        local panel = self:_BuildSettingsPanelHelper("main", self.sadCore.panels.main)
 
         callHook(self, "AfterBuildMainSettingsPanel", panel)
         return panel
@@ -799,7 +798,7 @@ do -- Settings Panels
     function addon:_BuildChildSettingsPanel(panelKey)
         panelKey = callHook(self, "BeforeBuildChildSettingsPanel", panelKey)
 
-        local panel = self:_BuildSettingsPanelHelper(panelKey, self.config.settings[panelKey])
+        local panel = self:_BuildSettingsPanelHelper(panelKey, self.sadCore.panels[panelKey])
 
         callHook(self, "AfterBuildChildSettingsPanel", panel)
         return panel
@@ -850,8 +849,8 @@ do -- Controls
 
         local header = CreateFrame("Frame", nil, parent)
         header:SetHeight(50)
-        header:SetPoint("TOPLEFT", self.config.ui.spacing.contentLeft, yOffset)
-        header:SetPoint("TOPRIGHT", self.config.ui.spacing.contentRight, yOffset)
+        header:SetPoint("TOPLEFT", self.sadCore.ui.spacing.contentLeft, yOffset)
+        header:SetPoint("TOPRIGHT", self.sadCore.ui.spacing.contentRight, yOffset)
 
         header.Title = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
         header.Title:SetPoint("BOTTOMLEFT", 7, 4)
@@ -859,7 +858,7 @@ do -- Controls
         header.Title:SetJustifyV("BOTTOM")
         header.Title:SetText(self:L(name))
 
-        local newYOffset = yOffset - self.config.ui.spacing.headerHeight
+        local newYOffset = yOffset - self.sadCore.ui.spacing.headerHeight
         callHook(self, "AfterAddHeader", header, newYOffset)
         return header, newYOffset
     end
@@ -917,8 +916,8 @@ do -- Controls
 
         local checkbox = CreateFrame("Frame", nil, parent)
         checkbox:SetHeight(32)
-        checkbox:SetPoint("TOPLEFT", self.config.ui.spacing.controlLeft, yOffset)
-        checkbox:SetPoint("TOPRIGHT", self.config.ui.spacing.controlRight, yOffset)
+        checkbox:SetPoint("TOPLEFT", self.sadCore.ui.spacing.controlLeft, yOffset)
+        checkbox:SetPoint("TOPRIGHT", self.sadCore.ui.spacing.controlRight, yOffset)
 
         checkbox.Text = checkbox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         checkbox.Text:SetSize(205, 0)
@@ -976,7 +975,7 @@ do -- Controls
             end)
         end
 
-        local newYOffset = yOffset - self.config.ui.spacing.controlHeight
+        local newYOffset = yOffset - self.sadCore.ui.spacing.controlHeight
         callHook(self, "AfterAddCheckbox", checkbox, newYOffset)
         return checkbox, newYOffset
     end
@@ -1000,8 +999,8 @@ do -- Controls
 
         local dropdown = CreateFrame("Frame", nil, parent)
         dropdown:SetHeight(32)
-        dropdown:SetPoint("TOPLEFT", self.config.ui.spacing.controlLeft, yOffset)
-        dropdown:SetPoint("TOPRIGHT", self.config.ui.spacing.controlRight, yOffset)
+        dropdown:SetPoint("TOPLEFT", self.sadCore.ui.spacing.controlLeft, yOffset)
+        dropdown:SetPoint("TOPRIGHT", self.sadCore.ui.spacing.controlRight, yOffset)
 
         dropdown.Text = dropdown:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         dropdown.Text:SetSize(205, 0)
@@ -1012,7 +1011,7 @@ do -- Controls
 
         dropdown.Dropdown = CreateFrame("Frame", nil, dropdown, "UIDropDownMenuTemplate")
         dropdown.Dropdown:SetPoint("LEFT", 200, 3)
-        UIDropDownMenu_SetWidth(dropdown.Dropdown, self.config.ui.dropdown.width)
+        UIDropDownMenu_SetWidth(dropdown.Dropdown, self.sadCore.ui.dropdown.width)
 
         local initializeFunc = function(dropdownFrame, level)
             local savedValue = (sessionOnly ~= true) and addonInstance.savedVars[panelKey][name] or currentValue
@@ -1055,7 +1054,7 @@ do -- Controls
             end
         end
 
-        local newYOffset = yOffset - self.config.ui.spacing.controlHeight
+        local newYOffset = yOffset - self.sadCore.ui.spacing.controlHeight
         callHook(self, "AfterAddDropdown", dropdown, newYOffset)
         return dropdown, newYOffset
     end
@@ -1079,8 +1078,8 @@ do -- Controls
 
         local slider = CreateFrame("Frame", nil, parent)
         slider:SetHeight(32)
-        slider:SetPoint("TOPLEFT", self.config.ui.spacing.controlLeft, yOffset)
-        slider:SetPoint("TOPRIGHT", self.config.ui.spacing.controlRight, yOffset)
+        slider:SetPoint("TOPLEFT", self.sadCore.ui.spacing.controlLeft, yOffset)
+        slider:SetPoint("TOPRIGHT", self.sadCore.ui.spacing.controlRight, yOffset)
 
         slider.Text = slider:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         slider.Text:SetSize(205, 0)
@@ -1099,7 +1098,7 @@ do -- Controls
 
         local steps = (maxValue - minValue) / step
         slider.Slider:Init(currentValue or defaultValue, minValue, maxValue, steps)
-        slider.Slider:SetWidth(self.config.ui.slider.width)
+        slider.Slider:SetWidth(self.sadCore.ui.slider.width)
 
         local function updateValue(value)
             if value == 0 then
@@ -1151,7 +1150,7 @@ do -- Controls
             end)
         end
 
-        local newYOffset = yOffset - self.config.ui.spacing.controlHeight
+        local newYOffset = yOffset - self.sadCore.ui.spacing.controlHeight
         callHook(self, "AfterAddSlider", slider, newYOffset)
         return slider, newYOffset
     end
@@ -1163,8 +1162,8 @@ do -- Controls
 
         local button = CreateFrame("Frame", nil, parent)
         button:SetHeight(40)
-        button:SetPoint("TOPLEFT", self.config.ui.spacing.contentLeft, yOffset)
-        button:SetPoint("TOPRIGHT", self.config.ui.spacing.contentRight, yOffset)
+        button:SetPoint("TOPLEFT", self.sadCore.ui.spacing.contentLeft, yOffset)
+        button:SetPoint("TOPRIGHT", self.sadCore.ui.spacing.contentRight, yOffset)
 
         button.Button = CreateFrame("Button", nil, button, "UIPanelButtonTemplate")
         button.Button:SetSize(120, 22)
@@ -1191,7 +1190,7 @@ do -- Controls
             end)
         end
 
-        local newYOffset = yOffset - self.config.ui.spacing.buttonHeight
+        local newYOffset = yOffset - self.sadCore.ui.spacing.buttonHeight
         callHook(self, "AfterAddButton", button, newYOffset)
         return button, newYOffset
     end
@@ -1214,8 +1213,8 @@ do -- Controls
 
         local colorPicker = CreateFrame("Frame", nil, parent)
         colorPicker:SetHeight(32)
-        colorPicker:SetPoint("TOPLEFT", self.config.ui.spacing.controlLeft, yOffset)
-        colorPicker:SetPoint("TOPRIGHT", self.config.ui.spacing.controlRight, yOffset)
+        colorPicker:SetPoint("TOPLEFT", self.sadCore.ui.spacing.controlLeft, yOffset)
+        colorPicker:SetPoint("TOPRIGHT", self.sadCore.ui.spacing.controlRight, yOffset)
 
         colorPicker.Text = colorPicker:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         colorPicker.Text:SetSize(205, 0)
@@ -1317,7 +1316,7 @@ do -- Controls
             end)
         end
 
-        local newYOffset = yOffset - self.config.ui.spacing.controlHeight
+        local newYOffset = yOffset - self.sadCore.ui.spacing.controlHeight
         callHook(self, "AfterAddColorPicker", colorPicker, newYOffset)
         return colorPicker, newYOffset
     end
@@ -1328,13 +1327,13 @@ do -- Controls
             name, onClick)
 
         local frame = CreateFrame("Frame", nil, parent)
-        frame:SetPoint("TOPLEFT", self.config.ui.spacing.controlLeft, yOffset)
-        frame:SetPoint("TOPRIGHT", self.config.ui.spacing.controlRight, yOffset)
+        frame:SetPoint("TOPLEFT", self.sadCore.ui.spacing.controlLeft, yOffset)
+        frame:SetPoint("TOPRIGHT", self.sadCore.ui.spacing.controlRight, yOffset)
         frame:SetHeight(32)
 
         local fontString = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        fontString:SetPoint("LEFT", self.config.ui.spacing.textInset, 0)
-        fontString:SetPoint("RIGHT", -self.config.ui.spacing.textInset, 0)
+        fontString:SetPoint("LEFT", self.sadCore.ui.spacing.textInset, 0)
+        fontString:SetPoint("RIGHT", -self.sadCore.ui.spacing.textInset, 0)
         fontString:SetJustifyH("LEFT")
         fontString:SetJustifyV("TOP")
         fontString:SetWordWrap(true)
@@ -1357,7 +1356,7 @@ do -- Controls
             end)
         end
 
-        local newYOffset = yOffset - math.max(32, stringHeight) - self.config.ui.spacing.descriptionPadding
+        local newYOffset = yOffset - math.max(32, stringHeight) - self.sadCore.ui.spacing.descriptionPadding
         callHook(self, "AfterAddDescription", frame, newYOffset)
         return frame, newYOffset
     end
@@ -1371,8 +1370,8 @@ do -- Controls
 
         local frame = CreateFrame("Frame", nil, parent)
         frame:SetHeight(totalHeight)
-        frame:SetPoint("TOPLEFT", self.config.ui.spacing.controlLeft, yOffset)
-        frame:SetPoint("TOPRIGHT", self.config.ui.spacing.controlRight, yOffset)
+        frame:SetPoint("TOPLEFT", self.sadCore.ui.spacing.controlLeft, yOffset)
+        frame:SetPoint("TOPRIGHT", self.sadCore.ui.spacing.controlRight, yOffset)
 
         frame.Line = frame:CreateTexture(nil, "ARTWORK")
         frame.Line:SetHeight(1)
@@ -1394,8 +1393,8 @@ do -- Controls
 
         local control = CreateFrame("Frame", nil, parent)
         control:SetHeight(32)
-        control:SetPoint("TOPLEFT", self.config.ui.spacing.controlLeft, yOffset)
-        control:SetPoint("TOPRIGHT", self.config.ui.spacing.controlRight, yOffset)
+        control:SetPoint("TOPLEFT", self.sadCore.ui.spacing.controlLeft, yOffset)
+        control:SetPoint("TOPRIGHT", self.sadCore.ui.spacing.controlRight, yOffset)
 
         control.Text = control:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         control.Text:SetSize(205, 0)
@@ -1525,7 +1524,7 @@ do -- Controls
             end
         end
 
-        local newYOffset = yOffset - self.config.ui.spacing.controlHeight
+        local newYOffset = yOffset - self.sadCore.ui.spacing.controlHeight
         callHook(self, "AfterAddInputBox", control, newYOffset)
         return control, newYOffset
     end
@@ -1537,7 +1536,7 @@ do -- Controls
         self:Debug("ShowDialog called")
         local dialog = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
 
-        local uiCfg = self.config.ui
+        local uiCfg = self.sadCore.ui
         local width = dialogOptions.width or uiCfg.dialog.defaultWidth
         dialog:SetWidth(width)
         dialog:SetPoint("CENTER")
@@ -1845,7 +1844,7 @@ do -- Utility Functions
 
         local exportData = {
             addon = self.addonName,
-            version = tostring(self.config.version),
+            version = tostring(self.sadCore.version),
             settings = self.savedVars
         }
 
@@ -1933,7 +1932,7 @@ do -- Utility Functions
         self:Debug("Data keys: " .. table.concat(keys, ", "))
 
         self:Debug("Import: - addon: " .. tostring(data.addon) .. ", version: " .. tostring(data.version))
-        self:Debug("Loaded: - addon: " .. tostring(self.addonName) .. ", version: " ..tostring(self.config.version))
+        self:Debug("Loaded: - addon: " .. tostring(self.addonName) .. ", version: " ..tostring(self.sadCore.version))
 
         if data.addon ~= self.addonName then
             self:Error(self:L("core_importWrongAddon") .. ": " .. tostring(data.addon) .. " (expected: " ..
@@ -1945,9 +1944,9 @@ do -- Utility Functions
 
         self:Debug("Addon name check passed")
 
-        if tostring(data.version) ~= tostring(self.config.version) then
+        if tostring(data.version) ~= tostring(self.sadCore.version) then
             self:Info(self:L("core_importAddonVersionMismatch") .. " " .. self:L("core_installed") .. ": " ..
-                          tostring(self.config.version) .. ", " .. self:L("core_importString") .. ": " ..
+                          tostring(self.sadCore.version) .. ", " .. self:L("core_importString") .. ": " ..
                           tostring(data.version) .. ". " .. self:L("core_dataMismatchWarning"))
         end
 

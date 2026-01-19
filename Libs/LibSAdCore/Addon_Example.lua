@@ -7,11 +7,11 @@ addon.savedVarsPerCharName = "MyAddon_Settings_Char"
 addon.compartmentFuncName = "MyAddon_Compartment_Func"
 
 function addon:Initialize()
-    self.config.version = "1.0"
+    self.sadCore.version = "1.0"
     self.author = "Rôkk-Wyrmrest Accord"
 
     -- Example - Add Settings to Main Settings Panel
-    self.config.settings.main = {
+    self.sadCore.panels.main = {
         title = "exampleTitle",
         controls = {
             {
@@ -28,7 +28,7 @@ function addon:Initialize()
     }
 
     -- Example - Add a New Child Settings Panel
-    self.config.settings.examplePanel = {
+    self.sadCore.panels.examplePanel = {
         title = "examplePanelTitle",
         controls = {
             {
