@@ -284,8 +284,8 @@ end
 -- This merges user-provided locale with default locale
 for localeKey, prototypeLocale in pairs(...) do
 
--- Get the current value from settings
-local value = self.settings[key]
+-- Get the current value from saved variables
+local value = self.savedVars[key]
 ```
 
 **Rationale:** Developers will not be reading the framework code directly. Most comments are unnecessary noise that belongs in README.md or other documentation files. Code should be self-explanatory through clear naming and structure. Simple section headers are acceptable ONLY to organize very large sections of code (like localization tables or major functional blocks).

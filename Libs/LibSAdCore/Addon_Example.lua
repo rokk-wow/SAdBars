@@ -43,6 +43,22 @@ function addon:Initialize()
             },
         }
     }
+    
+    -- Example - Register event to demonstrate accessing savedVars
+    self:RegisterEvent("PLAYER_ENTERING_WORLD", self.OnPlayerEnteringWorld)
+end
+
+function addon:OnPlayerEnteringWorld()
+    -- Example: Access UI control values from savedVars
+    local mainCheckbox = self.savedVars.main.exampleCheckbox
+    local panelCheckbox = self.savedVars.examplePanel.examplePanelCheckbox
+    
+    print(string.format("%s: Main checkbox is %s", addonName, tostring(mainCheckbox)))
+    print(string.format("%s: Panel checkbox is %s", addonName, tostring(panelCheckbox)))
+    
+    -- Example: Access custom data from savedVars.data
+    self.savedVars.data.loginCount = (self.savedVars.data.loginCount or 0) + 1
+    print(string.format("%s: You have logged in %d times", addonName, self.savedVars.data.loginCount))
 end
 
 function addon:exampleCheckbox(isChecked)

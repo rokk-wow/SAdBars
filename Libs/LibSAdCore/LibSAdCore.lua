@@ -217,7 +217,7 @@ end
 --[[============================================================================
     SAdCore - Simple Addon Core
 ==============================================================================]]
-local SADCORE_MAJOR, SADCORE_MINOR = "SAdCore-1", 6
+local SADCORE_MAJOR, SADCORE_MINOR = "SAdCore-1", 7
 local SAdCore, oldminor = LibStub:NewLibrary(SADCORE_MAJOR, SADCORE_MINOR)
 if not SAdCore then
     return
@@ -415,29 +415,29 @@ do -- Initialize
             savedVarsPerChar)
 
         if savedVarsGlobal then
-            self.settingsGlobal = savedVarsGlobal
-            self.settingsGlobal.main = self.settingsGlobal.main or {}
+            self.savedVarsGlobal = savedVarsGlobal
+            self.savedVarsGlobal.main = self.savedVarsGlobal.main or {}
         else
-            self.settingsGlobal = {}
-            self.settingsGlobal.main = {}
+            self.savedVarsGlobal = {}
+            self.savedVarsGlobal.main = {}
         end
 
         if savedVarsPerChar then
-            self.settingsChar = savedVarsPerChar
-            self.settingsChar.main = self.settingsChar.main or {}
+            self.savedVarsChar = savedVarsPerChar
+            self.savedVarsChar.main = self.savedVarsChar.main or {}
         else
-            self.settingsChar = {}
-            self.settingsChar.main = {}
+            self.savedVarsChar = {}
+            self.savedVarsChar.main = {}
         end
 
         if self.savedVarsGlobalName then
-            _G[self.savedVarsGlobalName] = self.settingsGlobal
+            _G[self.savedVarsGlobalName] = self.savedVarsGlobal
         end
         if self.savedVarsPerCharName then
-            _G[self.savedVarsPerCharName] = self.settingsChar
+            _G[self.savedVarsPerCharName] = self.savedVarsChar
         end
 
-        self.settings = (self.settingsChar.useCharacterSettings) and self.settingsChar or self.settingsGlobal
+        self.savedVars = (self.savedVarsChar.useCharacterSettings) and self.savedVarsChar or self.savedVarsGlobal
 
         local returnValue = true
         callHook(self, "AfterInitializeSavedVariables", returnValue)
@@ -698,16 +698,18 @@ do -- Settings Panels
             return false
         end
 
+        self.savedVars.data = self.savedVars.data or {}
+
         for panelKey, panelConfig in pairs(self.config.settings) do
-            self.settings[panelKey] = self.settings[panelKey] or {}
+            self.savedVars[panelKey] = self.savedVars[panelKey] or {}
             
             if panelConfig.controls then
                 for _, controlConfig in ipairs(panelConfig.controls) do
                     local controlName = controlConfig.name
                     local controlDefault = controlConfig.default
                     
-                    if controlName and controlDefault ~= nil and self.settings[panelKey][controlName] == nil then
-                        self.settings[panelKey][controlName] = controlDefault
+                    if controlName and controlDefault ~= nil and self.savedVars[panelKey][controlName] == nil then
+                        self.savedVars[panelKey][controlName] = controlDefault
                     end
                 end
             end
@@ -882,31 +884,31 @@ do -- Controls
             end
         elseif name == "core_useCharacterSettings" then
             getValue = function()
-                return self.settingsChar.useCharacterSettings
+                return self.savedVarsChar.useCharacterSettings
             end
             setValue = function(value)
-                self.settingsChar.useCharacterSettings = value
+                self.savedVarsChar.useCharacterSettings = value
                 if onValueChange then
                     onValueChange(addonInstance, value)
                 end
             end
             if getValue() == nil then
-                self.settingsChar.useCharacterSettings = defaultValue
+                self.savedVarsChar.useCharacterSettings = defaultValue
             end
         else
-            self.settings[panelKey] = self.settings[panelKey] or {}
-            if self.settings[panelKey][name] == nil then
-                self.settings[panelKey][name] = defaultValue
+            self.savedVars[panelKey] = self.savedVars[panelKey] or {}
+            if self.savedVars[panelKey][name] == nil then
+                self.savedVars[panelKey][name] = defaultValue
             end
 
             getValue = function()
-                self.settings[panelKey] = self.settings[panelKey] or {}
-                return self.settings[panelKey][name]
+                self.savedVars[panelKey] = self.savedVars[panelKey] or {}
+                return self.savedVars[panelKey][name]
             end
 
             setValue = function(value)
-                self.settings[panelKey] = self.settings[panelKey] or {}
-                self.settings[panelKey][name] = value
+                self.savedVars[panelKey] = self.savedVars[panelKey] or {}
+                self.savedVars[panelKey][name] = value
                 if onValueChange then
                     onValueChange(addonInstance, value)
                 end
@@ -989,11 +991,11 @@ do -- Controls
         local currentValue = defaultValue
 
         if sessionOnly ~= true then
-            self.settings[panelKey] = self.settings[panelKey] or {}
-            if self.settings[panelKey][name] == nil then
-                self.settings[panelKey][name] = defaultValue
+            self.savedVars[panelKey] = self.savedVars[panelKey] or {}
+            if self.savedVars[panelKey][name] == nil then
+                self.savedVars[panelKey][name] = defaultValue
             end
-            currentValue = self.settings[panelKey][name]
+            currentValue = self.savedVars[panelKey][name]
         end
 
         local dropdown = CreateFrame("Frame", nil, parent)
@@ -1013,14 +1015,14 @@ do -- Controls
         UIDropDownMenu_SetWidth(dropdown.Dropdown, self.config.ui.dropdown.width)
 
         local initializeFunc = function(dropdownFrame, level)
-            local savedValue = (sessionOnly ~= true) and addonInstance.settings[panelKey][name] or currentValue
+            local savedValue = (sessionOnly ~= true) and addonInstance.savedVars[panelKey][name] or currentValue
             for _, option in ipairs(options) do
                 local info = UIDropDownMenu_CreateInfo()
                 info.text = addonInstance:L(option.label)
                 info.value = option.value
                 info.func = function(self)
                     if sessionOnly ~= true then
-                        addonInstance.settings[panelKey][name] = self.value
+                        addonInstance.savedVars[panelKey][name] = self.value
                     else
                         currentValue = self.value
                     end
@@ -1044,8 +1046,8 @@ do -- Controls
 
         if not skipRefresh and sessionOnly ~= true then
             dropdown.refresh = function()
-                addonInstance.settings[panelKey] = addonInstance.settings[panelKey] or {}
-                local value = addonInstance.settings[panelKey][name]
+                addonInstance.savedVars[panelKey] = addonInstance.savedVars[panelKey] or {}
+                local value = addonInstance.savedVars[panelKey][name]
                 if value == nil then
                     value = defaultValue
                 end
@@ -1068,11 +1070,11 @@ do -- Controls
         local currentValue = defaultValue
 
         if sessionOnly ~= true then
-            self.settings[panelKey] = self.settings[panelKey] or {}
-            if self.settings[panelKey][name] == nil then
-                self.settings[panelKey][name] = defaultValue
+            self.savedVars[panelKey] = self.savedVars[panelKey] or {}
+            if self.savedVars[panelKey][name] == nil then
+                self.savedVars[panelKey][name] = defaultValue
             end
-            currentValue = self.settings[panelKey][name]
+            currentValue = self.savedVars[panelKey][name]
         end
 
         local slider = CreateFrame("Frame", nil, parent)
@@ -1113,7 +1115,7 @@ do -- Controls
 
         slider.Slider:RegisterCallback(MinimalSliderWithSteppersMixin.Event.OnValueChanged, function(_, value)
             if sessionOnly ~= true then
-                addonInstance.settings[panelKey][name] = value
+                addonInstance.savedVars[panelKey][name] = value
             else
                 currentValue = value
             end
@@ -1125,8 +1127,8 @@ do -- Controls
 
         if not skipRefresh and sessionOnly ~= true then
             slider.refresh = function()
-                addonInstance.settings[panelKey] = addonInstance.settings[panelKey] or {}
-                local value = addonInstance.settings[panelKey][name]
+                addonInstance.savedVars[panelKey] = addonInstance.savedVars[panelKey] or {}
+                local value = addonInstance.savedVars[panelKey][name]
                 if value == nil then
                     value = defaultValue
                 end
@@ -1203,11 +1205,11 @@ do -- Controls
         local currentValue = defaultValue
 
         if sessionOnly ~= true then
-            self.settings[panelKey] = self.settings[panelKey] or {}
-            if self.settings[panelKey][name] == nil then
-                self.settings[panelKey][name] = defaultValue
+            self.savedVars[panelKey] = self.savedVars[panelKey] or {}
+            if self.savedVars[panelKey][name] == nil then
+                self.savedVars[panelKey][name] = defaultValue
             end
-            currentValue = self.settings[panelKey][name]
+            currentValue = self.savedVars[panelKey][name]
         end
 
         local colorPicker = CreateFrame("Frame", nil, parent)
@@ -1246,7 +1248,7 @@ do -- Controls
             local r, g, b, a = self:HexToRGB(hexColor)
             colorPicker.ColorSwatch.Color:SetColorTexture(r, g, b, a)
             if sessionOnly ~= true then
-                self.settings[panelKey][name] = hexColor
+                self.savedVars[panelKey][name] = hexColor
             else
                 currentValue = hexColor
             end
@@ -1260,7 +1262,7 @@ do -- Controls
         end
 
         colorPicker.ColorSwatch:SetScript("OnClick", function(self)
-            local r, g, b, a = addonInstance:HexToRGB((sessionOnly ~= true) and addonInstance.settings[panelKey][name] or
+            local r, g, b, a = addonInstance:HexToRGB((sessionOnly ~= true) and addonInstance.savedVars[panelKey][name] or
                                                           currentValue or defaultValue)
 
             ColorPickerFrame:SetupColorPickerAndShow({
@@ -1289,8 +1291,8 @@ do -- Controls
 
         if not skipRefresh and sessionOnly ~= true then
             colorPicker.refresh = function()
-                self.settings[panelKey] = self.settings[panelKey] or {}
-                local value = self.settings[panelKey][name]
+                self.savedVars[panelKey] = self.savedVars[panelKey] or {}
+                local value = self.savedVars[panelKey][name]
                 if value == nil then
                     value = defaultValue
                 end
@@ -1419,15 +1421,15 @@ do -- Controls
         local shouldPersist = sessionOnly ~= true
 
         if shouldPersist then
-            self.settings[panelKey] = self.settings[panelKey] or {}
-            if self.settings[panelKey][name] == nil then
-                self.settings[panelKey][name] = default
+            self.savedVars[panelKey] = self.savedVars[panelKey] or {}
+            if self.savedVars[panelKey][name] == nil then
+                self.savedVars[panelKey][name] = default
             end
 
             control.EditBox:SetScript("OnTextChanged", function(self, userInput)
                 if userInput then
                     local newValue = self:GetText()
-                    addonInstance.settings[panelKey][name] = newValue
+                    addonInstance.savedVars[panelKey][name] = newValue
                     if onValueChange then
                         onValueChange(addonInstance, newValue)
                     end
@@ -1487,7 +1489,7 @@ do -- Controls
 
         control.EditBox:SetScript("OnShow", function(self)
             if shouldPersist then
-                local savedValue = addonInstance.settings[panelKey][name]
+                local savedValue = addonInstance.savedVars[panelKey][name]
                 if savedValue and self:GetText() == "" then
                     self:SetText(savedValue)
                     self:SetCursorPosition(0)
@@ -1499,7 +1501,7 @@ do -- Controls
         end)
 
         if shouldPersist then
-            local initialValue = self.settings[panelKey][name] or default
+            local initialValue = self.savedVars[panelKey][name] or default
             if initialValue then
                 control.EditBox:SetText(initialValue)
                 control.EditBox:SetCursorPosition(0)
@@ -1510,7 +1512,7 @@ do -- Controls
             end
 
             control.refresh = function()
-                local value = addonInstance.settings[panelKey][name] or default
+                local value = addonInstance.savedVars[panelKey][name] or default
                 if value then
                     control.EditBox:SetText(value)
                     control.EditBox:SetCursorPosition(0)
@@ -1755,7 +1757,7 @@ do -- Utility Functions
     end
 
     function addon:_coreDebug(text)
-        if self.settings and self.settings.main and self.settings.main.core_enableDebugging then
+        if self.savedVars and self.savedVars.main and self.savedVars.main.core_enableDebugging then
             print("\124cffDB09FE" .. "SAdCore" .. " Debug: " .. "\124cffBAFF1A" .. tostring(text))
         end
     end
@@ -1782,8 +1784,8 @@ do -- Utility Functions
 
     function addon:Debug(text)
         text = callHook(self, "BeforeDebug", text)
-       
-        if self.settings and self.settings.main and self.settings.main.core_enableDebugging then
+
+        if self.savedVars and self.savedVars.main and self.savedVars.main.core_enableDebugging then
             print("\124cffDB09FE" .. self.addonName .. " Debug: " .. "\124cffBAFF1A" .. tostring(text))
         end
 
@@ -1824,10 +1826,10 @@ do -- Utility Functions
         useCharacter = callHook(self, "BeforeUpdateActiveSettings", useCharacter)
         self:Debug("UpdateActiveSettings called with: " .. tostring(useCharacter) .. " (type: " .. type(useCharacter) ..
                        ")")
-        self:Debug("settingsChar exists: " .. tostring(self.settingsChar ~= nil) .. ", settingsGlobal exists: " ..
-                       tostring(self.settingsGlobal ~= nil))
+        self:Debug("savedVarsChar exists: " .. tostring(self.savedVarsChar ~= nil) .. ", savedVarsGlobal exists: " ..
+                       tostring(self.savedVarsGlobal ~= nil))
 
-        self.settings = useCharacter and self.settingsChar or self.settingsGlobal
+        self.savedVars = useCharacter and self.savedVarsChar or self.savedVarsGlobal
 
         local profileType = useCharacter and "Character" or "Global"
         self:Debug("Profile switched to: " .. profileType)
@@ -1844,7 +1846,7 @@ do -- Utility Functions
         local exportData = {
             addon = self.addonName,
             version = tostring(self.config.version),
-            settings = self.settings
+            settings = self.savedVars
         }
 
         local LibSerialize = self.LibSerialize
@@ -1959,12 +1961,12 @@ do -- Utility Functions
         local importedSettings = data.settings
 
         self:Debug("Clearing current settings and importing...")
-        for key in pairs(self.settings) do
-            self.settings[key] = nil
+        for key in pairs(self.savedVars) do
+            self.savedVars[key] = nil
         end
 
         for key, value in pairs(importedSettings) do
-            self.settings[key] = value
+            self.savedVars[key] = value
         end
 
         self:info(self:L("core_importSuccess"))
