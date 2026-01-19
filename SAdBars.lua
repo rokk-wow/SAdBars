@@ -23,6 +23,8 @@ addon.vars = addon.vars or {
     buttonPadding = 2
 }
 
+addon.gcdButtons = {}
+
 function addon:UpdateActionBars()
     self:CustomizeProcGlow()
     self:HideSpellActivationOverlay()
@@ -36,18 +38,46 @@ function addon:UpdateActionBars()
     self:CustomizeAssistedHighlightGlow()
     self:ZoomButtonIcons()
     self:CustomizeCooldownFont()
-    self:GCDSwipe()
-    self:CooldownSwipe()
+    self:CreateCustomGCDFrames()
 end
 
 function addon:Initialize()
     self.config.version = "1.0"
     self.author = "Rôkk-Wyrmrest Accord"
+    
+    self:RegisterSlashCommand("debug", function()
+        addon:BuildGCDButtonList()
+    end)
+    
+    self:RegisterSlashCommand("offgcd", function()
+        local count = 0
+        for _ in pairs(addon.offGCDSpells) do
+            count = count + 1
+        end
+        
+        if count == 0 then
+            print("SAdBars: No OFF-GCD spells in list.")
+            return
+        end
+        
+        print(string.format("SAdBars: OFF-GCD Spells (%d):", count))
+        for spellID, spellName in pairs(addon.offGCDSpells) do
+            print(string.format("  - %s (ID: %d)", spellName, spellID))
+        end
+    end)
 
     self:RegisterEvent("PLAYER_ENTERING_WORLD", function(event)
         self:CombatSafe(function()
             self:UpdateActionBars()
         end)
+    end)
+    
+    self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", function(...)
+        local eventTable, eventName, unit, castGUID, spellID = ...
+        
+        if unit == "player" and spellID then
+            addon:TriggerGCDAnimation(spellID)
+        end
     end)
 end
 
@@ -442,54 +472,104 @@ function addon:CustomizeCooldownFont()
     self:IterateActionButtons(adjustCooldownFont)
 end
 
-function addon:CooldownSwipe()
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function addon:DetectGCDSpell(spellID)
+    if not spellID then return nil end
+    
+    local spellInfo = C_Spell.GetSpellInfo(spellID)
+    if not spellInfo then return nil end
+    
+    local gcdInfo = C_Spell.GetSpellCooldown(61304)
+    local isOnGCD = gcdInfo and gcdInfo.duration > 0
+    
+    return isOnGCD
 end
 
-function addon:GCDSwipe()
-    local gcdButtons = {
-        ActionButton3 = true,
-        ActionButton4 = true,
-        ActionButton6 = true,
-        ActionButton7 = true,
-        ActionButton8 = true,
-        MultiBarBottomLeftButton1 = true,
-        MultiBarBottomLeftButton2 = true,
-        MultiBarBottomLeftButton5 = true,
-        MultiBarBottomLeftButton6 = true,
-        MultiBarBottomLeftButton7 = true,
-        MultiBarBottomLeftButton9 = true,
-        MultiBarBottomLeftButton10 = true,
-        MultiBarBottomLeftButton11 = true,
-        MultiBarBottomLeftButton12 = true,
-    }
-    
-    local function addGCDOverlay(button, buttonName)
-        if button and not button.SAdBars_GCDCooldown and gcdButtons[buttonName] then
+-- Static list of OFF-GCD spells: [spellID] = "SpellName"
+addon.offGCDSpells = {
+    [116849] = "Life Cocoon",
+}
+
+-- Buttons that should show GCD swipe
+addon.gcdEnabledButtons = {
+    ["ActionButton3"] = true,
+    ["ActionButton4"] = true,
+    ["ActionButton6"] = true,
+    ["ActionButton7"] = true,
+    ["ActionButton8"] = true,
+    ["MultiBarBottomLeftButton1"] = true,
+    ["MultiBarBottomLeftButton5"] = true,
+    ["MultiBarBottomLeftButton6"] = true,
+    ["MultiBarBottomLeftButton7"] = true,
+    ["MultiBarBottomLeftButton9"] = true,
+    ["MultiBarBottomLeftButton10"] = true,
+    ["MultiBarBottomLeftButton11"] = true,
+    ["MultiBarBottomLeftButton12"] = true,
+}
+
+function addon:CreateCustomGCDFrames()
+    local function createGCDFrame(button, buttonName)
+        if button and not button.SAdBars_GCDCooldown then
             local gcdCooldown = CreateFrame("Cooldown", buttonName .. "_SAdBars_GCD", button, "CooldownFrameTemplate")
             gcdCooldown:SetAllPoints(button)
-            gcdCooldown:SetDrawEdge(false)
+            gcdCooldown:SetDrawSwipe(true)
+            gcdCooldown:SetDrawEdge(true)
             gcdCooldown:SetDrawBling(false)
-            gcdCooldown:SetSwipeColor(0, 0, 0, 0.9)
+            gcdCooldown:SetSwipeColor(0, 0, 0, 0.8)
             gcdCooldown:SetHideCountdownNumbers(true)
-            gcdCooldown:SetFrameLevel(button:GetFrameLevel() + 5)
-            
+            gcdCooldown:SetFrameStrata("HIGH")
+            gcdCooldown:SetFrameLevel(button:GetFrameLevel() + 10)
+            gcdCooldown:Show()
             button.SAdBars_GCDCooldown = gcdCooldown
         end
     end
     
-    self:IterateActionButtons(addGCDOverlay)
+    self:IterateActionButtons(createGCDFrame)
+end
+
+function addon:TriggerGCDAnimation(spellID)
+    if not spellID then return end
     
-    self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", function(event, unit, castGUID, spellID)
-        if unit == "player" then
-            local cooldownInfo = C_Spell.GetSpellCooldown(61304)
+    if addon.offGCDSpells[spellID] then return end
+
+    local gcdInfo = C_Spell.GetSpellCooldown(61304)
+    
+    if not gcdInfo or gcdInfo.duration == 0 then
+        return
+    end
+    
+    local startTime = gcdInfo.startTime
+    local gcdDuration = gcdInfo.duration
+    
+    self:IterateActionButtons(function(button, buttonName)
+        if button and button.SAdBars_GCDCooldown and button.action and addon.gcdEnabledButtons[buttonName] then
+            local actionType, actionID = GetActionInfo(button.action)
             
-            if cooldownInfo and cooldownInfo.startTime > 0 and cooldownInfo.duration > 0 and cooldownInfo.duration <= 1.5 then
-                self:IterateActionButtons(function(button, buttonName)
-                    if button and button.SAdBars_GCDCooldown and gcdButtons[buttonName] then
-                        button.SAdBars_GCDCooldown:SetCooldown(cooldownInfo.startTime, cooldownInfo.duration)
-                    end
-                end)
+            if actionType == "spell" or actionType == "macro" then
+                button.SAdBars_GCDCooldown:SetCooldown(startTime, gcdDuration)
             end
         end
     end)
