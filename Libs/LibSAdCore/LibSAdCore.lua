@@ -246,7 +246,8 @@ function SAdCore:GetAddon(addonName)
         local newAddon = {
             addonName = addonName,
             core = self,
-            locale = {}
+            locale = {},
+            sadCore = {}
         }
         setmetatable(newAddon, {
             __index = self.prototype
