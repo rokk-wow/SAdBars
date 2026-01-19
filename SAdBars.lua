@@ -2,9 +2,9 @@ local addonName = ...
 local SAdCore = LibStub("SAdCore-1")
 local addon = SAdCore:GetAddon(addonName)
 
-addon.savedVarsGlobalName = "SAdBars_Settings_Global"
-addon.savedVarsPerCharName = "SAdBars_Settings_Char"
-addon.compartmentFuncName = "SAdBars_Compartment_Func"
+addon.sadCore.savedVarsGlobalName = "SAdBars_Settings_Global"
+addon.sadCore.savedVarsPerCharName = "SAdBars_Settings_Char"
+addon.sadCore.compartmentFuncName = "SAdBars_Compartment_Func"
 addon.actionBars = {
     { name = "MainMenuBar", frame = MainMenuBar, buttonPrefix = "ActionButton" },
     { name = "MultiBarBottomLeft", frame = MultiBarBottomLeft, buttonPrefix = "MultiBarBottomLeftButton" },
@@ -17,10 +17,10 @@ addon.actionBars = {
 }
 
 addon.vars = addon.vars or {
-    borderWidth = 1,
+    borderWidth = 2,
     borderColor = "000000FF",
-    iconZoom = 0.1,
-    buttonPadding = 2
+    iconZoom = 0.3,
+    buttonPadding = 0
 }
 
 addon.gcdButtons = {}

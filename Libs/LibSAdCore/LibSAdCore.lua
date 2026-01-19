@@ -217,7 +217,7 @@ end
 --[[============================================================================
     SAdCore - Simple Addon Core
 ==============================================================================]]
-local SADCORE_MAJOR, SADCORE_MINOR = "SAdCore-1", 8
+local SADCORE_MAJOR, SADCORE_MINOR = "SAdCore-1", 9
 local SAdCore, oldminor = LibStub:NewLibrary(SADCORE_MAJOR, SADCORE_MINOR)
 if not SAdCore then
     return
@@ -258,34 +258,36 @@ function SAdCore:GetAddon(addonName)
         eventFrame:RegisterEvent("ADDON_LOADED")
         eventFrame:SetScript("OnEvent", function(self, event, loadedAddon)
             if loadedAddon == addonInstance.addonName then
-                local hasError = not addonInstance.savedVarsGlobalName or
-                                 not addonInstance.savedVarsPerCharName or
-                                 not addonInstance.compartmentFuncName or
-                                 (addonInstance.savedVarsGlobalName and not string.find(addonInstance.savedVarsGlobalName, addonInstance.addonName, 1, true)) or
-                                 (addonInstance.savedVarsPerCharName and not string.find(addonInstance.savedVarsPerCharName, addonInstance.addonName, 1, true)) or
-                                 (addonInstance.compartmentFuncName and not string.find(addonInstance.compartmentFuncName, addonInstance.addonName, 1, true))
+                addonInstance.sadCore = addonInstance.sadCore or {}
+                
+                local hasError = not addonInstance.sadCore.savedVarsGlobalName or
+                                 not addonInstance.sadCore.savedVarsPerCharName or
+                                 not addonInstance.sadCore.compartmentFuncName or
+                                 (addonInstance.sadCore.savedVarsGlobalName and not string.find(addonInstance.sadCore.savedVarsGlobalName, addonInstance.addonName, 1, true)) or
+                                 (addonInstance.sadCore.savedVarsPerCharName and not string.find(addonInstance.sadCore.savedVarsPerCharName, addonInstance.addonName, 1, true)) or
+                                 (addonInstance.sadCore.compartmentFuncName and not string.find(addonInstance.sadCore.compartmentFuncName, addonInstance.addonName, 1, true))
 
                 if hasError then
                     addon._coreInfo(getCoreLocaleString("core_errorConfigHelp1"))
                     addon._coreInfo(getCoreLocaleString("core_errorConfigHelp2"))
                     addon._coreInfo(getCoreLocaleString("core_errorConfigExample") .. " '" .. addonInstance.addonName .. "':")
-                    addon._coreInfo("  savedVarsGlobalName = '" .. addonInstance.addonName .. "_Settings_Global'")
-                    addon._coreInfo("  savedVarsPerCharName = '" .. addonInstance.addonName .. "_Settings_Char'")
-                    addon._coreInfo("  compartmentFuncName = '" .. addonInstance.addonName .. "_Compartment_Func'")
+                    addon._coreInfo("  addon.sadCore.savedVarsGlobalName = '" .. addonInstance.addonName .. "_Settings_Global'")
+                    addon._coreInfo("  addon.sadCore.savedVarsPerCharName = '" .. addonInstance.addonName .. "_Settings_Char'")
+                    addon._coreInfo("  addon.sadCore.compartmentFuncName = '" .. addonInstance.addonName .. "_Compartment_Func'")
                     error(string.format("%s: %s - %s", getCoreLocaleString("core_SAdCore"), addonInstance.addonName,
                         getCoreLocaleString("core_errorConfigHelp1")))
                     return
                 end
 
-                _G[addonInstance.savedVarsGlobalName] = _G[addonInstance.savedVarsGlobalName] or {}
-                _G[addonInstance.savedVarsPerCharName] = _G[addonInstance.savedVarsPerCharName] or {}
+                _G[addonInstance.sadCore.savedVarsGlobalName] = _G[addonInstance.sadCore.savedVarsGlobalName] or {}
+                _G[addonInstance.sadCore.savedVarsPerCharName] = _G[addonInstance.sadCore.savedVarsPerCharName] or {}
 
-                local savedVarsGlobal = _G[addonInstance.savedVarsGlobalName]
-                local savedVarsPerChar = _G[addonInstance.savedVarsPerCharName]
+                local savedVarsGlobal = _G[addonInstance.sadCore.savedVarsGlobalName]
+                local savedVarsPerChar = _G[addonInstance.sadCore.savedVarsPerCharName]
 
                 addonInstance:_Initialize(savedVarsGlobal, savedVarsPerChar)
 
-                _G[addonInstance.compartmentFuncName] = function()
+                _G[addonInstance.sadCore.compartmentFuncName] = function()
                     addonInstance:OpenSettings()
                 end
 
@@ -429,11 +431,11 @@ do -- Initialize
             self.savedVarsChar.main = {}
         end
 
-        if self.savedVarsGlobalName then
-            _G[self.savedVarsGlobalName] = self.savedVarsGlobal
+        if self.sadCore and self.sadCore.savedVarsGlobalName then
+            _G[self.sadCore.savedVarsGlobalName] = self.savedVarsGlobal
         end
-        if self.savedVarsPerCharName then
-            _G[self.savedVarsPerCharName] = self.savedVarsChar
+        if self.sadCore and self.sadCore.savedVarsPerCharName then
+            _G[self.sadCore.savedVarsPerCharName] = self.savedVarsChar
         end
 
         self.savedVars = (self.savedVarsChar.useCharacterSettings) and self.savedVarsChar or self.savedVarsGlobal

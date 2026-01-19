@@ -64,9 +64,9 @@ SAddons are:
    local SAdCore = LibStub("SAdCore-1")
    local addon = SAdCore:GetAddon(addonName)
    
-   addon.savedVarsGlobalName = "MyAddon_Settings_Global"
-   addon.savedVarsPerCharName = "MyAddon_Settings_Char"
-   addon.compartmentFuncName = "MyAddon_Compartment_Func"
+   addon.sadCore.savedVarsGlobalName = "MyAddon_Settings_Global"
+   addon.sadCore.savedVarsPerCharName = "MyAddon_Settings_Char"
+   addon.sadCore.compartmentFuncName = "MyAddon_Compartment_Func"
    
    function addon:Initialize()
        self.sadCore.version = "1.0"
