@@ -217,7 +217,7 @@ end
 --[[============================================================================
     SAdCore - Simple Addon Core
 ==============================================================================]]
-local SADCORE_MAJOR, SADCORE_MINOR = "SAdCore-1", 9
+local SADCORE_MAJOR, SADCORE_MINOR = "SAdCore-1", 14
 local SAdCore, oldminor = LibStub:NewLibrary(SADCORE_MAJOR, SADCORE_MINOR)
 if not SAdCore then
     return
@@ -306,6 +306,7 @@ do -- Initialize
 
         self.sadCore = self.sadCore or {}
         self.sadCore.panels = self.sadCore.panels or {}
+        self.sadCore.panelOrder = self.sadCore.panelOrder or {}
         self.sadCore.version = SADCORE_MAJOR:match("%d+") .. "." .. SADCORE_MINOR
         self.apiVersion = select(4, GetBuildInfo())
 
@@ -516,6 +517,33 @@ do -- Registration functions
 
         local returnValue = true
         callHook(self, "AfterRegisterSlashCommand", returnValue)
+        return returnValue
+    end
+
+    function addon:AddSettingsPanel(panelKey, panelConfig)
+        panelKey, panelConfig = callHook(self, "BeforeAddSettingsPanel", panelKey, panelConfig)
+
+        assert(panelKey ~= "main", "Cannot use AddSettingsPanel for 'main' panel. Use self.sadCore.panels.main = {...} instead.")
+        assert(not self.sadCore.panels[panelKey], string.format("Panel '%s' already exists. Each panel key must be unique.", panelKey))
+
+        self.sadCore.panels = self.sadCore.panels or {}
+        self.sadCore.panelOrder = self.sadCore.panelOrder or {}
+        self.sadCore.panels[panelKey] = panelConfig
+        
+        local alreadyTracked = false
+        for _, key in ipairs(self.sadCore.panelOrder) do
+            if key == panelKey then
+                alreadyTracked = true
+                break
+            end
+        end
+        
+        if not alreadyTracked then
+            table.insert(self.sadCore.panelOrder, panelKey)
+        end
+
+        local returnValue = true
+        callHook(self, "AfterAddSettingsPanel", returnValue)
         return returnValue
     end
 
@@ -734,15 +762,7 @@ do -- Settings Panels
         Settings.RegisterAddOnCategory(self.settingsCategory)
         self.settingsPanels["main"] = self.mainSettingsPanel
 
-        local sortedPanelKeys = {}
-        for panelKey in pairs(self.sadCore.panels) do
-            if panelKey ~= "main" then
-                table.insert(sortedPanelKeys, panelKey)
-            end
-        end
-        table.sort(sortedPanelKeys)
-
-        for _, panelKey in ipairs(sortedPanelKeys) do
+        for _, panelKey in ipairs(self.sadCore.panelOrder) do
             local panelConfig = self.sadCore.panels[panelKey]
             local childPanel = self:_BuildChildSettingsPanel(panelKey)
             if childPanel then
@@ -1022,6 +1042,36 @@ do -- Controls
                 local info = UIDropDownMenu_CreateInfo()
                 info.text = addonInstance:L(option.label)
                 info.value = option.value
+                
+                if option.icon then
+                    info.icon = option.icon
+                    
+                    -- Get atlas info to respect original dimensions
+                    local atlasInfo = C_Texture.GetAtlasInfo(option.icon)
+                    if atlasInfo then
+                        info.iconInfo = {
+                            tCoordLeft = atlasInfo.leftTexCoord,
+                            tCoordRight = atlasInfo.rightTexCoord,
+                            tCoordTop = atlasInfo.topTexCoord,
+                            tCoordBottom = atlasInfo.bottomTexCoord,
+                            tSizeX = atlasInfo.width,
+                            tSizeY = atlasInfo.height,
+                            tFitDropDownSizeX = false  -- Don't stretch to fit
+                        }
+                    else
+                        -- Fallback for non-atlas textures (file paths)
+                        info.iconInfo = {
+                            tCoordLeft = 0,
+                            tCoordRight = 1,
+                            tCoordTop = 0,
+                            tCoordBottom = 1,
+                            tSizeX = 16,
+                            tSizeY = 16,
+                            tFitDropDownSizeX = false
+                        }
+                    end
+                end
+                
                 info.func = function(self)
                     if sessionOnly ~= true then
                         addonInstance.savedVars[panelKey][name] = self.value
@@ -1041,6 +1091,14 @@ do -- Controls
 
         UIDropDownMenu_Initialize(dropdown.Dropdown, initializeFunc)
         UIDropDownMenu_SetSelectedValue(dropdown.Dropdown, currentValue or defaultValue)
+        
+        local selectedValue = currentValue or defaultValue
+        for _, option in ipairs(options) do
+            if option.value == selectedValue then
+                UIDropDownMenu_SetText(dropdown.Dropdown, addonInstance:L(option.label))
+                break
+            end
+        end
 
         if onValueChange then
             onValueChange(addonInstance, currentValue or defaultValue)
@@ -1054,7 +1112,28 @@ do -- Controls
                     value = defaultValue
                 end
                 UIDropDownMenu_SetSelectedValue(dropdown.Dropdown, value)
+                
+                for _, option in ipairs(options) do
+                    if option.value == value then
+                        UIDropDownMenu_SetText(dropdown.Dropdown, addonInstance:L(option.label))
+                        break
+                    end
+                end
             end
+        end
+
+        local tooltipKey = name .. "Tooltip"
+        local tooltipText = addonInstance:L(tooltipKey)
+        if tooltipText ~= "[" .. tooltipKey .. "]" then
+            dropdown.Dropdown:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(addonInstance:L(name), 1, 1, 1)
+                GameTooltip:AddLine(tooltipText, nil, nil, nil, true)
+                GameTooltip:Show()
+            end)
+            dropdown.Dropdown:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+            end)
         end
 
         local newYOffset = yOffset - self.sadCore.ui.spacing.controlHeight

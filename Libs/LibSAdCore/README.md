@@ -90,7 +90,7 @@ SAddons are:
        }
        
        -- Example - Add a New Child Settings Panel
-       self.sadCore.panels.examplePanel = {
+       self:AddSettingsPanel("examplePanel", {
            title = "examplePanelTitle",
            controls = {
                {
@@ -104,7 +104,7 @@ SAddons are:
                    onValueChange = self.examplePanelCheckbox
                }
            }
-       }
+       })
    end
    
    function addon:exampleCheckbox(isChecked)
@@ -220,7 +220,7 @@ function addon:Initialize()
     }
     
     -- Child Settings Panel
-    self.sadCore.panels.advancedPanel = {
+    self:AddSettingsPanel("advancedPanel", {
         title = "advancedTitle",
         controls = {
             {
@@ -234,7 +234,7 @@ function addon:Initialize()
                 onValueChange = self.advancedCheckbox
             }
         }
-    }
+    })
 end
 
 -- Callback Functions
@@ -317,6 +317,39 @@ To create a control that only exists for the current game session (and is reset 
 ### Automatic Tooltips
 
 To add a tooltip, define a localization key with the control's name + `"Tooltip"` (e.g., `"exampleCheckboxTooltip"` for `name = "exampleCheckbox"`).
+
+### Dropdown Icons
+
+Dropdown options support optional icons to provide visual previews. Icons can be atlas textures or file paths.
+
+**Basic dropdown (no icons):**
+```lua
+{
+    type = "dropdown",
+    name = "myDropdown",
+    default = "option1",
+    options = {
+        {value = "option1", label = "dropdownOption1"},
+        {value = "option2", label = "dropdownOption2"}
+    }
+}
+```
+
+**Dropdown with icons:**
+```lua
+{
+    type = "dropdown",
+    name = "roleDropdown",
+    default = "healer",
+    options = {
+        {value = "tank", label = "tankRole", icon = "roleicon-tiny-tank"},
+        {value = "healer", label = "healerRole", icon = "roleicon-tiny-healer"},
+        {value = "dps", label = "dpsRole", icon = "roleicon-tiny-dps"}
+    }
+}
+```
+
+Icons are displayed next to each option in the dropdown menu, making it easier for players to identify selections visually. If an icon is not provided for an option, it will display as text-only.
 
 ## Accessing Saved Settings
 

@@ -26,6 +26,9 @@ addon.vars = addon.vars or {
 addon.gcdButtons = {}
 
 function addon:UpdateActionBars()
+    local startTime = debugprofilestop()
+    self:Debug("UpdateActionBars: Starting")
+    
     self:CustomizeProcGlow()
     self:HideSpellActivationOverlay()
     self:AddActionButtonBorders()
@@ -39,6 +42,9 @@ function addon:UpdateActionBars()
     self:ZoomButtonIcons()
     self:CustomizeCooldownFont()
     self:CreateCustomGCDFrames()
+    
+    local elapsed = debugprofilestop() - startTime
+    self:Debug(string.format("UpdateActionBars: Completed in %.2fms", elapsed))
 end
 
 function addon:Initialize()
@@ -67,6 +73,7 @@ function addon:Initialize()
     end)
 
     self:RegisterEvent("PLAYER_ENTERING_WORLD", function(event)
+        self:Debug("Event: PLAYER_ENTERING_WORLD triggered")
         self:CombatSafe(function()
             self:UpdateActionBars()
         end)
@@ -76,6 +83,7 @@ function addon:Initialize()
         local eventTable, eventName, unit, castGUID, spellID = ...
         
         if unit == "player" and spellID then
+            self:Debug(string.format("UNIT_SPELLCAST_SUCCEEDED: spellID=%s", tostring(spellID)))
             addon:TriggerGCDAnimation(spellID)
         end
     end)
@@ -84,16 +92,23 @@ end
 function addon:IterateActionButtons(callback)
     if type(callback) ~= "function" then return end
     
+    local startTime = debugprofilestop()
+    local buttonCount = 0
+    
     for _, barInfo in ipairs(self.actionBars) do
         local prefix = barInfo.buttonPrefix
         for i = 1, 12 do
             local buttonName = prefix .. i
             local button = _G[buttonName]
             if button then
+                buttonCount = buttonCount + 1
                 callback(button, buttonName)
             end
         end
     end
+    
+    local elapsed = debugprofilestop() - startTime
+    self:Debug(string.format("IterateActionButtons: Processed %d buttons in %.2fms", buttonCount, elapsed))
 end
 
 function addon:IterateActionBars(callback)
@@ -160,6 +175,9 @@ function addon:addBorder(bar, borderWidth, borderColor)
 end
 
 function addon:CustomizeProcGlow()
+    local startTime = debugprofilestop()
+    self:Debug("CustomizeProcGlow: Starting")
+    
     self:IterateActionButtons(function(button, buttonName)
         if button and button.SpellActivationAlert then
             button.SpellActivationAlert:Hide()
@@ -168,6 +186,7 @@ function addon:CustomizeProcGlow()
             if not button.SpellActivationAlert.__SAdUI_HideHooked then
                 button.SpellActivationAlert.__SAdUI_HideHooked = true
                 hooksecurefunc(button.SpellActivationAlert, "Show", function(self)
+                    addon:Debug("Hook: SpellActivationAlert.Show fired")
                     self:Hide()
                     self:SetAlpha(0)
                 end)
@@ -178,6 +197,7 @@ function addon:CustomizeProcGlow()
     if ActionButtonSpellAlertManager and not ActionButtonSpellAlertManager.__SAdUI_Hooked then
         ActionButtonSpellAlertManager.__SAdUI_Hooked = true
         hooksecurefunc(ActionButtonSpellAlertManager, "ShowAlert", function(self, actionButton)
+            addon:Debug("Hook: ActionButtonSpellAlertManager.ShowAlert fired")
             if type(actionButton) ~= "table" then
                 actionButton = self
             end
@@ -188,21 +208,34 @@ function addon:CustomizeProcGlow()
             end
         end)
     end
+    
+    local elapsed = debugprofilestop() - startTime
+    self:Debug(string.format("CustomizeProcGlow: Completed in %.2fms", elapsed))
 end
 
 function addon:HideSpellActivationOverlay()
+    local startTime = debugprofilestop()
+    self:Debug("HideSpellActivationOverlay: Starting")
+    
     if SpellActivationOverlayFrame then
         SpellActivationOverlayFrame:Hide()
         SpellActivationOverlayFrame:SetAlpha(0)
         
         hooksecurefunc(SpellActivationOverlayFrame, "Show", function(self)
+            addon:Debug("Hook: SpellActivationOverlayFrame.Show fired")
             self:Hide()
             self:SetAlpha(0)
         end)
     end
+    
+    local elapsed = debugprofilestop() - startTime
+    self:Debug(string.format("HideSpellActivationOverlay: Completed in %.2fms", elapsed))
 end
 
 function addon:AddActionButtonBorders()
+    local startTime = debugprofilestop()
+    self:Debug("AddActionButtonBorders: Starting")
+    
     local function addButtonBorder(button, buttonName)
         if button then
             local normalTexture = button:GetNormalTexture()
@@ -221,9 +254,15 @@ function addon:AddActionButtonBorders()
     end
     
     self:IterateActionButtons(addButtonBorder)
+    
+    local elapsed = debugprofilestop() - startTime
+    self:Debug(string.format("AddActionButtonBorders: Completed in %.2fms", elapsed))
 end
 
 function addon:SetButtonPadding()
+    local startTime = debugprofilestop()
+    self:Debug("SetButtonPadding: Starting")
+    
     local padding = addon.vars.buttonPadding
     
     self:IterateActionBars(function(bar, name)
@@ -233,6 +272,7 @@ function addon:SetButtonPadding()
         
         if bar.UpdateGridLayout then
             hooksecurefunc(bar, "UpdateGridLayout", function(self)
+                addon:Debug(string.format("Hook: %s.UpdateGridLayout fired", name))
                 if self.SetAttribute then
                     self:SetAttribute("buttonSpacing", padding)
                 end
@@ -245,43 +285,64 @@ function addon:SetButtonPadding()
             bar:Layout()
         end
     end)
+    
+    local elapsed = debugprofilestop() - startTime
+    self:Debug(string.format("SetButtonPadding: Completed in %.2fms", elapsed))
 end
 
 function addon:HideMacroText()
+    local startTime = debugprofilestop()
+    self:Debug("HideMacroText: Starting")
+    
     local function hideButtonMacroText(button, buttonName)
         if button and button.Name then
             button.Name:SetAlpha(0)
             button.Name:Hide()
             hooksecurefunc(button.Name, "Show", function(self)
+                addon:Debug(string.format("Hook: %s.Name.Show fired", buttonName))
                 self:SetAlpha(0)
             end)
         end
     end
     
     self:IterateActionButtons(hideButtonMacroText)
+    
+    local elapsed = debugprofilestop() - startTime
+    self:Debug(string.format("HideMacroText: Completed in %.2fms", elapsed))
 end
 
 function addon:HideKeybindText()
+    local startTime = debugprofilestop()
+    self:Debug("HideKeybindText: Starting")
+    
     local function hideButtonKeybind(button, buttonName)
         if button and button.HotKey then
             button.HotKey:SetAlpha(0)
             button.HotKey:Hide()
             hooksecurefunc(button.HotKey, "Show", function(self)
+                addon:Debug(string.format("Hook: %s.HotKey.Show fired", buttonName))
                 self:SetAlpha(0)
             end)
         end
     end
     
     self:IterateActionButtons(hideButtonKeybind)
+    
+    local elapsed = debugprofilestop() - startTime
+    self:Debug(string.format("HideKeybindText: Completed in %.2fms", elapsed))
 end
 
 function addon:HideSpellCastAnimFrame()
+    local startTime = debugprofilestop()
+    self:Debug("HideSpellCastAnimFrame: Starting")
+    
     local function hideButtonGlow(button)
         if button and button.SpellCastAnimFrame then
             button.SpellCastAnimFrame:SetAlpha(0)
             button.SpellCastAnimFrame:Hide()
             
             hooksecurefunc(button.SpellCastAnimFrame, "Show", function(self)
+                addon:Debug("Hook: SpellCastAnimFrame.Show fired")
                 self:SetAlpha(0)
             end)
             
@@ -289,6 +350,7 @@ function addon:HideSpellCastAnimFrame()
                 button.SpellCastAnimFrame.Fill:SetAlpha(0)
                 button.SpellCastAnimFrame.Fill:Hide()
                 hooksecurefunc(button.SpellCastAnimFrame.Fill, "Show", function(self)
+                    addon:Debug("Hook: SpellCastAnimFrame.Fill.Show fired")
                     self:SetAlpha(0)
                 end)
             end
@@ -296,6 +358,7 @@ function addon:HideSpellCastAnimFrame()
                 button.SpellCastAnimFrame.InnerGlow:SetAlpha(0)
                 button.SpellCastAnimFrame.InnerGlow:Hide()
                 hooksecurefunc(button.SpellCastAnimFrame.InnerGlow, "Show", function(self)
+                    addon:Debug("Hook: SpellCastAnimFrame.InnerGlow.Show fired")
                     self:SetAlpha(0)
                 end)
             end
@@ -303,6 +366,7 @@ function addon:HideSpellCastAnimFrame()
                 button.SpellCastAnimFrame.FillMask:SetAlpha(0)
                 button.SpellCastAnimFrame.FillMask:Hide()
                 hooksecurefunc(button.SpellCastAnimFrame.FillMask, "Show", function(self)
+                    addon:Debug("Hook: SpellCastAnimFrame.FillMask.Show fired")
                     self:SetAlpha(0)
                 end)
             end
@@ -310,6 +374,7 @@ function addon:HideSpellCastAnimFrame()
                 button.SpellCastAnimFrame.Ants:SetAlpha(0)
                 button.SpellCastAnimFrame.Ants:Hide()
                 hooksecurefunc(button.SpellCastAnimFrame.Ants, "Show", function(self)
+                    addon:Debug("Hook: SpellCastAnimFrame.Ants.Show fired")
                     self:SetAlpha(0)
                 end)
             end
@@ -317,6 +382,7 @@ function addon:HideSpellCastAnimFrame()
                 button.SpellCastAnimFrame.Spark:SetAlpha(0)
                 button.SpellCastAnimFrame.Spark:Hide()
                 hooksecurefunc(button.SpellCastAnimFrame.Spark, "Show", function(self)
+                    addon:Debug("Hook: SpellCastAnimFrame.Spark.Show fired")
                     self:SetAlpha(0)
                 end)
             end
@@ -326,6 +392,7 @@ function addon:HideSpellCastAnimFrame()
             button.InterruptDisplay:SetAlpha(0)
             button.InterruptDisplay:Hide()
             hooksecurefunc(button.InterruptDisplay, "Show", function(self)
+                addon:Debug("Hook: InterruptDisplay.Show fired")
                 self:SetAlpha(0)
             end)
             if button.InterruptDisplay.Base then
@@ -359,9 +426,15 @@ function addon:HideSpellCastAnimFrame()
     self:IterateActionButtons(function(button, buttonName)
         hideButtonGlow(button)
     end)
+    
+    local elapsed = debugprofilestop() - startTime
+    self:Debug(string.format("HideSpellCastAnimFrame: Completed in %.2fms", elapsed))
 end
 
 function addon:AddActionBarBackgrounds()
+    local startTime = debugprofilestop()
+    self:Debug("AddActionBarBackgrounds: Starting")
+    
     self:IterateActionBars(function(bar, name)
         if bar.GetSettingValueBool then
             local alwaysShowButtons = bar:GetSettingValueBool(9)
@@ -374,9 +447,15 @@ function addon:AddActionBarBackgrounds()
             end
         end
     end)
+    
+    local elapsed = debugprofilestop() - startTime
+    self:Debug(string.format("AddActionBarBackgrounds: Completed in %.2fms", elapsed))
 end
 
 function addon:UpdateAssistedHighlightVisibility()
+    local startTime = debugprofilestop()
+    self:Debug("UpdateAssistedHighlightVisibility: Starting")
+    
     local inCombat = UnitAffectingCombat("player")
     
     self:IterateActionButtons(function(button, buttonName)
@@ -387,12 +466,35 @@ function addon:UpdateAssistedHighlightVisibility()
             end
         end
     end)
+    
+    local elapsed = debugprofilestop() - startTime
+    self:Debug(string.format("UpdateAssistedHighlightVisibility: Completed in %.2fms", elapsed))
 end
 
 function addon:CustomizeAssistedHighlightGlow()
+    local startTime = debugprofilestop()
+    self:Debug("CustomizeAssistedHighlightGlow: Starting")
+    
+    -- Buttons where the glow should be hidden completely
+    local hideGlowButtons = {
+        ["MultiBarBottomLeftButton1"] = true,
+        ["MultiBarBottomLeftButton6"] = true,
+        ["MultiBarBottomLeftButton12"] = true,
+    }
+    
     local function UpdateAssistedHighlight(actionButton, shown)
+        addon:Debug(string.format("UpdateAssistedHighlight called: shown=%s", tostring(shown)))
         local highlightFrame = actionButton.AssistedCombatHighlightFrame
         local inCombat = UnitAffectingCombat("player")
+        
+        -- Check if this button should have glow hidden
+        local buttonName = actionButton:GetName()
+        if buttonName and hideGlowButtons[buttonName] then
+            if highlightFrame then
+                highlightFrame:Hide()
+            end
+            return
+        end
         
         if highlightFrame and highlightFrame:IsVisible() and shown and inCombat then
             local flipbook = highlightFrame.Flipbook
@@ -418,12 +520,19 @@ function addon:CustomizeAssistedHighlightGlow()
     
     if AssistedCombatManager then
         hooksecurefunc(AssistedCombatManager, "SetAssistedHighlightFrameShown", function(self, actionButton, shown)
+            addon:Debug("Hook: AssistedCombatManager.SetAssistedHighlightFrameShown fired")
             UpdateAssistedHighlight(actionButton, shown)
         end)
     end
+    
+    local elapsed = debugprofilestop() - startTime
+    self:Debug(string.format("CustomizeAssistedHighlightGlow: Completed in %.2fms", elapsed))
 end
 
 function addon:ZoomButtonIcons()
+    local startTime = debugprofilestop()
+    self:Debug("ZoomButtonIcons: Starting")
+    
     local zoom = addon.vars.iconZoom
     local inset = zoom / 2
     
@@ -439,138 +548,181 @@ function addon:ZoomButtonIcons()
     end
     
     self:IterateActionButtons(zoomButtonIcon)
+    
+    local elapsed = debugprofilestop() - startTime
+    self:Debug(string.format("ZoomButtonIcons: Completed in %.2fms", elapsed))
 end
 
 function addon:CustomizeCooldownFont()
-    local function adjustCooldownFont(button, buttonName)
-        if button and button.cooldown then
-            for _, region in pairs({button.cooldown:GetRegions()}) do
-                if region:GetObjectType() == "FontString" then
-                    local font, _, flags = region:GetFont()
-                    if font then
-                        region:SetFont(font, 20, flags)
-                    end
-                end
-            end
+    local startTime = debugprofilestop()
+    self:Debug("CustomizeCooldownFont: Starting (currently disabled)")
+    
+--     local function adjustCooldownFont(button, buttonName)
+--         if button and button.cooldown then
+--             for _, region in pairs({button.cooldown:GetRegions()}) do
+--                 if region:GetObjectType() == "FontString" then
+--                     local font, _, flags = region:GetFont()
+--                     if font then
+--                         region:SetFont(font, 20, flags)
+--                     end
+--                 end
+--             end
             
-            if not button.cooldown.__SAdBars_FontHooked then
-                button.cooldown.__SAdBars_FontHooked = true
-                hooksecurefunc(button.cooldown, "SetCooldown", function(self)
-                    for _, region in pairs({self:GetRegions()}) do
-                        if region:GetObjectType() == "FontString" then
-                            local font, _, flags = region:GetFont()
-                            if font then
-                                region:SetFont(font, 20, flags)
-                            end
-                        end
-                    end
-                end)
-            end
-        end
-    end
+--             if not button.cooldown.__SAdBars_FontHooked then
+--                 button.cooldown.__SAdBars_FontHooked = true
+--                 hooksecurefunc(button.cooldown, "SetCooldown", function(self)
+--                     addon:Debug(string.format("Hook: %s.cooldown.SetCooldown fired", buttonName))
+--                     for _, region in pairs({self:GetRegions()}) do
+--                         if region:GetObjectType() == "FontString" then
+--                             local font, _, flags = region:GetFont()
+--                             if font then
+--                                 region:SetFont(font, 20, flags)
+--                             end
+--                         end
+--                     end
+--                 end)
+--             end
+--         end
+--     end
     
-    self:IterateActionButtons(adjustCooldownFont)
+--     self:IterateActionButtons(adjustCooldownFont)
+    
+    local elapsed = debugprofilestop() - startTime
+    self:Debug(string.format("CustomizeCooldownFont: Completed in %.2fms", elapsed))
 end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function addon:DetectGCDSpell(spellID)
-    if not spellID then return nil end
-    
-    local spellInfo = C_Spell.GetSpellInfo(spellID)
-    if not spellInfo then return nil end
-    
-    local gcdInfo = C_Spell.GetSpellCooldown(61304)
-    local isOnGCD = gcdInfo and gcdInfo.duration > 0
-    
-    return isOnGCD
-end
-
--- Static list of OFF-GCD spells: [spellID] = "SpellName"
-addon.offGCDSpells = {
-    [116849] = "Life Cocoon",
-}
-
--- Buttons that should show GCD swipe
-addon.gcdEnabledButtons = {
-    ["ActionButton3"] = true,
-    ["ActionButton4"] = true,
-    ["ActionButton6"] = true,
-    ["ActionButton7"] = true,
-    ["ActionButton8"] = true,
-    ["MultiBarBottomLeftButton1"] = true,
-    ["MultiBarBottomLeftButton5"] = true,
-    ["MultiBarBottomLeftButton6"] = true,
-    ["MultiBarBottomLeftButton7"] = true,
-    ["MultiBarBottomLeftButton9"] = true,
-    ["MultiBarBottomLeftButton10"] = true,
-    ["MultiBarBottomLeftButton11"] = true,
-    ["MultiBarBottomLeftButton12"] = true,
-}
 
 function addon:CreateCustomGCDFrames()
-    local function createGCDFrame(button, buttonName)
-        if button and not button.SAdBars_GCDCooldown then
-            local gcdCooldown = CreateFrame("Cooldown", buttonName .. "_SAdBars_GCD", button, "CooldownFrameTemplate")
-            gcdCooldown:SetAllPoints(button)
-            gcdCooldown:SetDrawSwipe(true)
-            gcdCooldown:SetDrawEdge(true)
-            gcdCooldown:SetDrawBling(false)
-            gcdCooldown:SetSwipeColor(0, 0, 0, 0.8)
-            gcdCooldown:SetHideCountdownNumbers(true)
-            gcdCooldown:SetFrameStrata("HIGH")
-            gcdCooldown:SetFrameLevel(button:GetFrameLevel() + 10)
-            gcdCooldown:Show()
-            button.SAdBars_GCDCooldown = gcdCooldown
-        end
-    end
-    
-    self:IterateActionButtons(createGCDFrame)
+    self:Debug("CreateCustomGCDFrames: Stub function (implementation commented out)")
 end
 
 function addon:TriggerGCDAnimation(spellID)
-    if not spellID then return end
-    
-    if addon.offGCDSpells[spellID] then return end
-
-    local gcdInfo = C_Spell.GetSpellCooldown(61304)
-    
-    if not gcdInfo or gcdInfo.duration == 0 then
-        return
-    end
-    
-    local startTime = gcdInfo.startTime
-    local gcdDuration = gcdInfo.duration
-    
-    self:IterateActionButtons(function(button, buttonName)
-        if button and button.SAdBars_GCDCooldown and button.action and addon.gcdEnabledButtons[buttonName] then
-            local actionType, actionID = GetActionInfo(button.action)
-            
-            if actionType == "spell" or actionType == "macro" then
-                button.SAdBars_GCDCooldown:SetCooldown(startTime, gcdDuration)
-            end
-        end
-    end)
+    self:Debug(string.format("TriggerGCDAnimation: Stub function - spellID=%s (implementation commented out)", tostring(spellID)))
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- function addon:DetectGCDSpell(spellID)
+--     print(string.format("[SAdBars] DetectGCDSpell: checking spellID=%s", tostring(spellID)))
+--     if not spellID then return nil end
+    
+--     local spellInfo = C_Spell.GetSpellInfo(spellID)
+--     if not spellInfo then return nil end
+    
+--     local gcdInfo = C_Spell.GetSpellCooldown(61304)
+--     local isOnGCD = gcdInfo and gcdInfo.duration > 0
+    
+--     print(string.format("[SAdBars] DetectGCDSpell: spellID=%s, isOnGCD=%s", tostring(spellID), tostring(isOnGCD)))
+--     return isOnGCD
+-- end
+
+-- -- Static list of OFF-GCD spells: [spellID] = "SpellName"
+-- addon.offGCDSpells = {
+--     [116849] = "Life Cocoon",
+-- }
+
+-- -- Buttons that should show GCD swipe
+-- addon.gcdEnabledButtons = {
+--     ["ActionButton3"] = true,
+--     ["ActionButton4"] = true,
+--     ["ActionButton6"] = true,
+--     ["ActionButton7"] = true,
+--     ["ActionButton8"] = true,
+--     ["MultiBarBottomLeftButton1"] = true,
+--     ["MultiBarBottomLeftButton5"] = true,
+--     ["MultiBarBottomLeftButton6"] = true,
+--     ["MultiBarBottomLeftButton7"] = true,
+--     ["MultiBarBottomLeftButton9"] = true,
+--     ["MultiBarBottomLeftButton10"] = true,
+--     ["MultiBarBottomLeftButton11"] = true,
+--     ["MultiBarBottomLeftButton12"] = true,
+-- }
+
+-- function addon:CreateCustomGCDFrames()
+--     local startTime = debugprofilestop()
+--     print("[SAdBars] CreateCustomGCDFrames: Starting")
+--     local frameCount = 0
+    
+--     local function createGCDFrame(button, buttonName)
+--         if button and not button.SAdBars_GCDCooldown then
+--             frameCount = frameCount + 1
+--             print(string.format("[SAdBars] Creating GCD frame for %s", buttonName))
+--             local gcdCooldown = CreateFrame("Cooldown", buttonName .. "_SAdBars_GCD", button, "CooldownFrameTemplate")
+--             gcdCooldown:SetAllPoints(button)
+--             gcdCooldown:SetDrawSwipe(true)
+--             gcdCooldown:SetDrawEdge(true)
+--             gcdCooldown:SetDrawBling(false)
+--             gcdCooldown:SetSwipeColor(0, 0, 0, 0.8)
+--             gcdCooldown:SetHideCountdownNumbers(true)
+--             gcdCooldown:SetFrameStrata("HIGH")
+--             gcdCooldown:SetFrameLevel(button:GetFrameLevel() + 10)
+--             gcdCooldown:Show()
+--             button.SAdBars_GCDCooldown = gcdCooldown
+--         end
+--     local startTime = debugprofilestop()
+--     if not spellID then
+--         print("[SAdBars] TriggerGCDAnimation: No spellID provided")
+--         return
+--     end
+    
+--     if addon.offGCDSpells[spellID] then
+--         print(string.format("[SAdBars] TriggerGCDAnimation: spellID=%s is OFF-GCD, skipping", tostring(spellID)))
+--         return
+--     end
+
+--     local gcdInfo = C_Spell.GetSpellCooldown(61304)
+    
+--     if not gcdInfo or gcdInfo.duration == 0 then
+--         print("[SAdBars] TriggerGCDAnimation: No GCD active")
+--         return
+--     end
+    
+--     local startGCDTime = gcdInfo.startTime
+--     local gcdDuration = gcdInfo.duration
+--     local triggeredCount = 0
+    
+--     print(string.format("[SAdBars] TriggerGCDAnimation: spellID=%s, duration=%.2fs", tostring(spellID), gcdDuration))
+    
+--     self:IterateActionButtons(function(button, buttonName)
+--         if button and button.SAdBars_GCDCooldown and button.action and addon.gcdEnabledButtons[buttonName] then
+--             local actionType, actionID = GetActionInfo(button.action)
+            
+--             if actionType == "spell" or actionType == "macro" then
+--                 triggeredCount = triggeredCount + 1
+--                 button.SAdBars_GCDCooldown:SetCooldown(startGCDTime, gcdDuration)
+--             end
+--         end
+--     end)
+    
+--     local elapsed = debugprofilestop() - startTime
+--     print(string.format("[SAdBars] TriggerGCDAnimation: Triggered %d buttons in %.2fms", triggeredCount, elapsed)f:IterateActionButtons(function(button, buttonName)
+--         if button and button.SAdBars_GCDCooldown and button.action and addon.gcdEnabledButtons[buttonName] then
+--             local actionType, actionID = GetActionInfo(button.action)
+            
+--             if actionType == "spell" or actionType == "macro" then
+--                 button.SAdBars_GCDCooldown:SetCooldown(startTime, gcdDuration)
+--             end
+--         end
+--     end)
+-- end
