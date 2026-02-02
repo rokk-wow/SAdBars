@@ -69,7 +69,6 @@ SAddons are:
    addon.sadCore.compartmentFuncName = "MyAddon_Compartment_Func"
    
    function addon:Initialize()
-       self.sadCore.version = "1.0"
        self.author = "Your Name"
        
        -- Example - Add Settings to Main Settings Panel
@@ -138,7 +137,6 @@ This example shows all available control types using the same naming convention 
 
 ```lua
 function addon:Initialize()
-    self.sadCore.version = "1.0"
     self.author = "Your Name"
     
     -- Main Settings Panel
@@ -366,6 +364,35 @@ function addon:PrintDebuggingStatus()
 end
 ```
 
+### Safe Value Retrieval with `addon:GetValue()`
+
+Use `addon:GetValue(panel, settingName)` to retrieve saved variables with validation. This protects against corrupted SavedVariables files by validating values against control definitions and returning the saved value, default value, or `nil`.
+
+**Example:**
+```lua
+-- Direct access (no validation)
+local enabled = self.savedVars.main.enableFeature
+local scale = self.savedVars.main.uiScale
+local icon = self.savedVars.main.selectIcon
+
+-- Validated access (safe)
+local enabled = self:GetValue("main", "enableFeature")  -- guaranteed boolean or nil
+local scale = self:GetValue("main", "uiScale") or 1.0   -- guaranteed valid number or default
+local icon = self:GetValue("main", "selectIcon")        -- guaranteed valid option or nil
+```
+
+### Setting Values with `addon:SetValue()`
+
+Use `addon:SetValue(panel, settingName, value)` to programmatically update saved variables. This ensures the panel structure is initialized and returns `true` on success.
+
+**Example:**
+```lua
+-- Set values programmatically
+self:SetValue("main", "enableFeature", true)
+self:SetValue("main", "uiScale", 1.5)
+self:SetValue("options", "selectedMode", "advanced")
+```
+
 ## Storing Custom Data
 
 Need to save data without creating UI controls? Use the reserved `self.savedVars.data` namespace. This table is automatically initialized and included in saved variables, export/import, and profile switching.
@@ -415,6 +442,33 @@ addon.locale.enEN = {
 }
 ```
 
+## Release Notes
+
+Automatically display patch notes to users the first time they load after an update. Users can manually view release notes via the "Show Release Notes" button in settings.
+
+Release notes are displayed once per version using `addon:Info()`. Users won't see them again unless they reset their SavedVariables. Manually display anytime with `addon:ShowReleaseNotes()`
+
+**Example:**
+
+```lua
+-- Set version and release notes
+addon.sadCore.releaseNotes = {
+    version = "1.2.0",
+    notes = {
+        "releaseNote_feature1",
+        "releaseNote_feature2",
+        "releaseNote_bugfix1"
+    }
+}
+
+-- Add localization strings
+addon.locale.enEN = {
+    releaseNote_feature1 = "Added new feature: Advanced role selection",
+    releaseNote_feature2 = "Improved settings panel organization",
+    releaseNote_bugfix1 = "Fixed: Settings not saving on logout"
+}
+```
+
 ## Slash Commands
 
 By default, every addon automatically gets a slash command based on the addon name. For example, if your addon is named `MyAddon`, the slash command `/myaddon` is automatically registered.
@@ -428,7 +482,6 @@ You can register additional commands as **parameters** to the main slash command
 **Example:**
 ```lua
 function addon:Initialize()
-    self.sadCore.version = "1.0"
     self.author = "Your Name"
     
     -- Configure your settings panels here
@@ -464,7 +517,6 @@ Register WoW events with `self:RegisterEvent(eventName, callback)`:
 
 ```lua
 function addon:Initialize()
-    self.sadCore.version = "1.0"
     self.author = "Your Name"
     
     -- Configure your settings panels here
@@ -492,6 +544,28 @@ function addon:OnUnitHealth(event, unitID)
 end
 ```
 
+## Frame Event Registration
+
+Register frame events (EventRegistry callbacks) with `self:RegisterFrameEvent(eventName, callback)`. Frame events use WoW's `EventRegistry` system and are commonly used for UI-related events like Edit Mode changes, layout updates, and other frame-specific callbacks. You can identify frame events from `/etrace` because they usually have the frame name separated from the event name with a `.` dot.
+
+```lua
+function addon:Initialize()
+    self.author = "Your Name"
+    
+    -- Register frame events
+    self:RegisterFrameEvent("EditMode.Enter", self.OnEditModeEnter)
+    self:RegisterFrameEvent("EditMode.Exit", self.OnEditModeExit)
+end
+
+function addon:OnEditModeEnter()
+    self:Info("Edit mode entered")
+end
+
+function addon:OnEditModeExit()
+    self:Info("Edit mode exited")
+end
+```
+
 ## Combat-Safe Functions
 
 Some WoW API calls cannot be made during combat (e.g., modifying secure frames, changing UI positions). SAdCore provides `CombatSafe()` to automatically queue actions during combat and execute them when combat ends.
@@ -508,6 +582,64 @@ end
 ```
 
 If called during combat, the function is queued. When combat ends, it executes automatically. If called outside combat, it executes immediately.
+
+## Secret-Safe Functions
+
+Some WoW API calls return "secret values" in PvP contexts that cannot be used with UI operations. SAdCore provides `SecureCall()` to automatically replace secret values with `nil`.
+
+### Example
+
+```lua
+function addon:UpdateArenaHealth()
+    local health = self:SecureCall(UnitHealth, "arena1")
+    if health then
+        self:Info("Health: " .. health)
+    end
+end
+```
+
+Secret values are replaced with `nil`, safe values pass through unchanged. Supports up to 20 return values.
+
+## Retry Functions
+
+Some operations may fail temporarily and need to be retried (e.g., waiting for frames to load, API calls that return incomplete data). SAdCore provides `Retry()` to automatically retry a function until it succeeds or reaches the maximum retry limit. Retry will run the function after a short delay until the function either returns `true`, or the maximum retry count is reached.
+
+### Syntax
+
+```lua
+self:Retry(func, initialWait)
+```
+
+**Parameters:**
+- `func` (function) - The function to retry. Should return `true` when successful.
+- `initialWait` (number, optional) - Seconds to wait before the first attempt. If omitted or `0`, executes immediately.
+
+### Examples
+
+```lua
+-- Immediate execution (no initial wait)
+function addon:WaitForFrame()
+    self:Retry(function()
+        if MyFrame and MyFrame:IsShown() then
+            -- Frame is ready, do something
+            MyFrame:SetAlpha(1.0)
+            return true  -- Success! Stop retrying
+        end
+        -- Frame not ready yet, will retry
+    end)
+end
+
+-- Wait 0.5 seconds before first attempt
+function addon:DelayedCheck()
+    self:Retry(function()
+        if SomeGlobalVariable then
+            -- Variable is available, proceed
+            return true
+        end
+        -- Not ready, will retry
+    end, 0.5)
+end
+```
 
 ## Zone Management
 
@@ -542,6 +674,7 @@ These are the most commonly used functions available on the `self` object within
 
 ### Events & Commands
 - **`self:RegisterEvent(eventName, callback)`** - Register a WoW event with a callback function
+- **`self:RegisterFrameEvent(eventName, callback)`** - Register a frame event (EventRegistry callback) with a callback function
 - **`self:RegisterSlashCommand(command, callback)`** - Register a custom slash command as a parameter to the main addon command
 
 ### Zone Detection
@@ -550,6 +683,11 @@ These are the most commonly used functions available on the `self` object within
 
 ### Settings
 - **`self:OpenSettings()`** - Opens the addon settings panel
+
+### Combat & Safety Functions
+- **`self:CombatSafe(func)`** - Queues a function to execute after combat ends (or immediately if not in combat)
+- **`self:SecureCall(func, ...)`** - Calls a function and replaces any secret values in return values with `nil`
+- **`self:Retry(func, initialWait)`** - Retries a function until it returns `true` or maximum attempts is reached. `initialWait` (optional) specifies seconds to wait before the first attempt.
 
 ### Color Utilities
 - **`self:hexToRGB(hex)`** - Converts hex color string to RGB values (returns r, g, b, a)
@@ -619,4 +757,3 @@ end
 ```
 
 All available hooks follow the pattern: `Before[FunctionName]` and `After[FunctionName]`. See `LibSAdCore.lua` for the complete list.
-

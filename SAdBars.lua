@@ -6,14 +6,16 @@ addon.sadCore.savedVarsGlobalName = "SAdBars_Settings_Global"
 addon.sadCore.savedVarsPerCharName = "SAdBars_Settings_Char"
 addon.sadCore.compartmentFuncName = "SAdBars_Compartment_Func"
 addon.actionBars = {
-    { name = "MainMenuBar", frame = MainMenuBar, buttonPrefix = "ActionButton" },
-    { name = "MultiBarBottomLeft", frame = MultiBarBottomLeft, buttonPrefix = "MultiBarBottomLeftButton" },
-    { name = "MultiBarBottomRight", frame = MultiBarBottomRight, buttonPrefix = "MultiBarBottomRightButton" },
-    { name = "MultiBarRight", frame = MultiBarRight, buttonPrefix = "MultiBarRightButton" },
-    { name = "MultiBarLeft", frame = MultiBarLeft, buttonPrefix = "MultiBarLeftButton" },
-    { name = "MultiBar5", frame = MultiBar5, buttonPrefix = "MultiBar5Button" },
-    { name = "MultiBar6", frame = MultiBar6, buttonPrefix = "MultiBar6Button" },
-    { name = "MultiBar7", frame = MultiBar7, buttonPrefix = "MultiBar7Button" },
+    { name = "MainMenuBar", frame = MainMenuBar, buttonPrefix = "ActionButton", displayName = "Bar 1" },
+    { name = "MultiBarBottomLeft", frame = MultiBarBottomLeft, buttonPrefix = "MultiBarBottomLeftButton", displayName = "Bar 2" },
+    { name = "MultiBarBottomRight", frame = MultiBarBottomRight, buttonPrefix = "MultiBarBottomRightButton", displayName = "Bar 3" },
+    { name = "MultiBarRight", frame = MultiBarRight, buttonPrefix = "MultiBarRightButton", displayName = "Bar 4" },
+    { name = "MultiBarLeft", frame = MultiBarLeft, buttonPrefix = "MultiBarLeftButton", displayName = "Bar 5" },
+    { name = "MultiBar5", frame = MultiBar5, buttonPrefix = "MultiBar5Button", displayName = "Bar 6" },
+    { name = "MultiBar6", frame = MultiBar6, buttonPrefix = "MultiBar6Button", displayName = "Bar 7" },
+    { name = "MultiBar7", frame = MultiBar7, buttonPrefix = "MultiBar7Button", displayName = "Bar 8" },
+    { name = "PetActionBar", frame = PetActionBar, buttonPrefix = "PetActionButton", displayName = "Pet Bar" },
+    { name = "StanceBar", frame = StanceBar, buttonPrefix = "StanceButton", displayName = "Stance Bar" },
 }
 
 addon.vars = addon.vars or {
@@ -42,14 +44,40 @@ function addon:UpdateActionBars()
     self:ZoomButtonIcons()
     self:CustomizeCooldownFont()
     self:CreateCustomGCDFrames()
+    self:UpdateFadeBars()
     
     local elapsed = debugprofilestop() - startTime
     self:Debug(string.format("UpdateActionBars: Completed in %.2fms", elapsed))
 end
 
 function addon:Initialize()
-    self.sadCore.version = "1.0"
     self.author = "Rôkk-Wyrmrest Accord"
+    
+    -- Fade Bars Settings Panel
+    local fadeControls = {}
+    table.insert(fadeControls, {
+        type = "header",
+        name = "fadeBarsHeader"
+    })
+    
+    for i, barInfo in ipairs(self.actionBars) do
+        -- Skip MainMenuBar (Bar 1) as Blizzard doesn't allow it to be hidden
+        if barInfo.name ~= "MainMenuBar" then
+            table.insert(fadeControls, {
+                type = "checkbox",
+                name = "fadeBar" .. barInfo.name,
+                default = false,
+                onValueChange = function(isChecked)
+                    addon:UpdateFadeBars()
+                end
+            })
+        end
+    end
+    
+    self:AddSettingsPanel("fadeBars", {
+        title = "fadeBarsTitle",
+        controls = fadeControls
+    })
     
     self:RegisterSlashCommand("debug", function()
         addon:BuildGCDButtonList()
@@ -589,6 +617,118 @@ function addon:CustomizeCooldownFont()
     
     local elapsed = debugprofilestop() - startTime
     self:Debug(string.format("CustomizeCooldownFont: Completed in %.2fms", elapsed))
+end
+
+function addon:UpdateFadeBars()
+    local startTime = debugprofilestop()
+    self:Debug("UpdateFadeBars: Starting")
+    
+    -- Create a list of bars that should fade
+    local fadeBars = {}
+    for _, barInfo in ipairs(self.actionBars) do
+        local settingName = "fadeBar" .. barInfo.name
+        local shouldFade = self:GetValue("fadeBars", settingName)
+        if shouldFade and barInfo.frame then
+            table.insert(fadeBars, barInfo.frame)
+        end
+    end
+    
+    -- If no bars are set to fade, clean up and exit
+    if #fadeBars == 0 then
+        for _, barInfo in ipairs(self.actionBars) do
+            if barInfo.frame then
+                barInfo.frame:SetAlpha(1)
+                if barInfo.frame.SAdBars_FadeScripts then
+                    barInfo.frame:SetScript("OnEnter", nil)
+                    barInfo.frame:SetScript("OnLeave", nil)
+                    barInfo.frame.SAdBars_FadeScripts = nil
+                end
+            end
+        end
+        local elapsed = debugprofilestop() - startTime
+        self:Debug(string.format("UpdateFadeBars: No bars to fade, completed in %.2fms", elapsed))
+        return
+    end
+    
+    -- Function to fade all bars in
+    local function FadeAllBarsIn()
+        if InCombatLockdown() then
+            -- In combat, set alpha directly without animation
+            for _, bar in ipairs(fadeBars) do
+                bar:SetAlpha(1)
+            end
+        else
+            -- Out of combat, use smooth fade animation
+            for _, bar in ipairs(fadeBars) do
+                UIFrameFadeIn(bar, 0.2, bar:GetAlpha(), 1)
+            end
+        end
+    end
+    
+    -- Function to fade all bars out
+    local function FadeAllBarsOut()
+        if InCombatLockdown() then
+            -- In combat, set alpha directly without animation
+            for _, bar in ipairs(fadeBars) do
+                bar:SetAlpha(0)
+            end
+        else
+            -- Out of combat, use smooth fade animation
+            for _, bar in ipairs(fadeBars) do
+                UIFrameFadeOut(bar, 0.2, bar:GetAlpha(), 0)
+            end
+        end
+    end
+    
+    -- Set up mouse detection only on bars that are fading
+    for _, barInfo in ipairs(self.actionBars) do
+        if barInfo.frame then
+            local settingName = "fadeBar" .. barInfo.name
+            local shouldFade = self:GetValue("fadeBars", settingName)
+            
+            if shouldFade then
+                -- This bar is faded, so hovering it should reveal all faded bars
+                barInfo.frame:EnableMouse(true)
+                barInfo.frame:SetScript("OnEnter", function()
+                    FadeAllBarsIn()
+                end)
+                barInfo.frame:SetScript("OnLeave", function()
+                    FadeAllBarsOut()
+                end)
+                barInfo.frame.SAdBars_FadeScripts = true
+                
+                -- Also attach handlers to all buttons in this bar
+                local prefix = barInfo.buttonPrefix
+                for i = 1, 12 do
+                    local buttonName = prefix .. i
+                    local button = _G[buttonName]
+                    if button then
+                        button:HookScript("OnEnter", function()
+                            FadeAllBarsIn()
+                        end)
+                        button:HookScript("OnLeave", function()
+                            FadeAllBarsOut()
+                        end)
+                    end
+                end
+            else
+                -- This bar is not faded, remove any fade scripts
+                if barInfo.frame.SAdBars_FadeScripts then
+                    barInfo.frame:SetScript("OnEnter", nil)
+                    barInfo.frame:SetScript("OnLeave", nil)
+                    barInfo.frame.SAdBars_FadeScripts = nil
+                end
+            end
+        end
+    end
+    
+    -- Initial fade out for enabled bars
+    for _, bar in ipairs(fadeBars) do
+        bar:SetAlpha(0)
+    end
+    
+    local elapsed = debugprofilestop() - startTime
+    self:Debug(string.format("UpdateFadeBars: Configured %d bars to fade in %.2fms", #fadeBars, elapsed))
 end
 
 function addon:CreateCustomGCDFrames()
